@@ -1,0 +1,13 @@
+node_modules
+dist
+build
+.env
+.env.*
+server/.env
+client/.env
+password.txt
+!.env.example
+coverage
+.DS_Store
+Thumbs.db
+

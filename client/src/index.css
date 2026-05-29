@@ -1,0 +1,260 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 217 33% 98%;
+    --foreground: 222 47% 11%;
+    --surface: 0 0% 100%;
+    --surface-2: 216 33% 96%;
+    --border: 214 32% 88%;
+    --muted: 214 32% 94%;
+    --muted-foreground: 215 16% 46%;
+    --primary: 151 69% 19%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 142 68% 29%;
+    --accent-foreground: 0 0% 100%;
+    --success: 142 72% 29%;
+    --warning: 38 92% 50%;
+    --danger: 0 72% 51%;
+    --app-font-size: 14px;
+    --app-heading-weight: 800;
+    --app-table-font-size: 12px;
+    --app-print-font-size: 12px;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply min-h-screen bg-background text-foreground antialiased;
+    font-family: "Manrope", sans-serif;
+    font-size: var(--app-font-size);
+    background: hsl(var(--background));
+  }
+
+  html[data-font-family="system"] body {
+    font-family: Arial, sans-serif;
+  }
+
+  html[data-font-family="serif"] body {
+    font-family: Georgia, serif;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: "Space Grotesk", sans-serif;
+    letter-spacing: -0.02em;
+    font-weight: var(--app-heading-weight);
+  }
+
+  html[data-font-family="system"] h1,
+  html[data-font-family="system"] h2,
+  html[data-font-family="system"] h3,
+  html[data-font-family="system"] h4,
+  html[data-font-family="system"] h5,
+  html[data-font-family="system"] h6 {
+    font-family: Arial, sans-serif;
+  }
+
+  html[data-font-family="serif"] h1,
+  html[data-font-family="serif"] h2,
+  html[data-font-family="serif"] h3,
+  html[data-font-family="serif"] h4,
+  html[data-font-family="serif"] h5,
+  html[data-font-family="serif"] h6 {
+    font-family: Georgia, serif;
+  }
+
+  ::selection {
+    background: rgba(15, 118, 110, 0.18);
+  }
+}
+
+@layer components {
+  .card-surface {
+    @apply rounded-3xl border border-border bg-surface/90 shadow-soft backdrop-blur;
+  }
+
+  .card-surface-2 {
+    @apply rounded-2xl border border-border bg-surface/80 shadow-glow backdrop-blur;
+  }
+
+  .section-shell {
+    @apply card-surface p-5 md:p-6;
+  }
+
+  .input-shell {
+    @apply w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10;
+  }
+
+  .label-shell {
+    @apply mb-2 block text-sm font-medium text-foreground/80;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-surface-2;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted;
+  }
+
+  .incumbency-table th {
+    @apply sticky top-0 z-10 border-b border-border bg-surface-2 px-2 py-2 text-left text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground;
+    font-size: calc(var(--app-table-font-size) - 1px);
+  }
+
+  .incumbency-table td {
+    @apply border-b border-border px-2 py-1.5 align-middle leading-5;
+    font-size: var(--app-table-font-size);
+  }
+
+  .incumbency-table tbody tr:hover td {
+    @apply bg-surface-2/70;
+  }
+
+  .incumbency-table .section-row td {
+    @apply bg-muted py-2 text-xs font-bold uppercase tracking-[0.08em] text-foreground;
+  }
+
+  .incumbency-table .section-row em {
+    @apply ml-2 text-[11px] font-semibold normal-case tracking-normal text-muted-foreground;
+  }
+
+  .incumbency-table .empty-row td {
+    @apply bg-surface px-3 py-2 text-muted-foreground;
+  }
+
+  .icon-action {
+    @apply inline-flex h-7 w-7 items-center justify-center rounded-md text-foreground/70 transition hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35;
+  }
+
+  .mini-action {
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold normal-case tracking-normal text-foreground transition hover:bg-surface;
+  }
+
+  .sheet-scroll {
+    max-height: calc(100vh - 164px);
+    overflow: auto;
+    scrollbar-color: hsl(var(--primary)) hsl(var(--muted));
+    scrollbar-width: thin;
+  }
+
+  .sheet-scroll::-webkit-scrollbar {
+    height: 12px;
+    width: 12px;
+  }
+
+  .sheet-scroll::-webkit-scrollbar-thumb {
+    border: 3px solid hsl(var(--muted));
+    border-radius: 999px;
+    background: hsl(var(--primary));
+  }
+
+  .sheet-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+  }
+
+  html[data-density="comfortable"] .incumbency-table td {
+    @apply py-2.5;
+  }
+
+  html[data-density="comfortable"] .sheet-scroll {
+    max-height: calc(100vh - 180px);
+  }
+}
+
+.print-header {
+  display: none;
+}
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 8mm;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  .no-print,
+  .screen-only,
+  aside,
+  header,
+  button {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  .print-header {
+    display: block !important;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+
+  .print-header h1 {
+    font-size: 19px;
+    font-weight: 800;
+  }
+
+  .print-header p {
+    font-size: 11px;
+  }
+
+  .incumbency-table {
+    min-width: 0 !important;
+    width: 100% !important;
+    table-layout: auto !important;
+    font-size: var(--app-print-font-size) !important;
+  }
+
+  .incumbency-table th,
+  .incumbency-table td {
+    border: 1px solid #222 !important;
+    padding: 6px 7px !important;
+    color: #000 !important;
+    font-size: var(--app-print-font-size) !important;
+    line-height: 1.35 !important;
+  }
+
+  .incumbency-table th {
+    position: static !important;
+    background: #f1f5f9 !important;
+  }
+
+  .incumbency-table .section-row td {
+    background: #dbeafe !important;
+    font-size: calc(var(--app-print-font-size) + 1px) !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.02em !important;
+  }
+}
