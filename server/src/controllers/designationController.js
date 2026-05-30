@@ -11,7 +11,7 @@ const shape = (designation) => ({
   id: designation._id,
   name: designation.name,
   bps: designation.bps,
-  service: designation.service,
+  totalStrength: designation.totalStrength,
   category: designation.category,
   sortOrder: designation.sortOrder,
   isActive: designation.isActive,
@@ -22,7 +22,7 @@ const shape = (designation) => ({
 export const listDesignations = asyncHandler(async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query);
   const query = {};
-  if (req.query.q) query.$or = [{ name: regexSearch(req.query.q) }, { bps: regexSearch(req.query.q) }, { service: regexSearch(req.query.q) }];
+  if (req.query.q) query.$or = [{ name: regexSearch(req.query.q) }, { bps: regexSearch(req.query.q) }];
   if (req.query.category) query.category = req.query.category;
   const isActive = req.query.isActive === undefined ? true : parseActiveFilter(req.query.isActive);
   if (isActive !== undefined) query.isActive = isActive;

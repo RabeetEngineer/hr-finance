@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Pencil, Plus, Save, X } from "lucide-react";
+import { Building2, ChevronDown, ChevronUp, GitBranch, Layers, MoveVertical, Pencil, Plus, Save, X } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
 import Modal from "@/components/common/Modal";
 import { organizationUnitService } from "@/services/organizationUnitService";
@@ -47,6 +47,74 @@ const buildTree = (units) => {
 
 const blankForm = { id: "", name: "", code: "", parent: "" };
 
+const levelStyles = [
+  {
+    card: "border-slate-300 bg-slate-50",
+    icon: "bg-slate-900 text-white",
+    badge: "bg-slate-200 text-slate-700",
+    child: "bg-emerald-100 text-emerald-800",
+  },
+  {
+    card: "border-emerald-200 bg-emerald-50/65",
+    icon: "bg-emerald-700 text-white",
+    badge: "bg-emerald-100 text-emerald-800",
+    child: "bg-teal-100 text-teal-800",
+  },
+  {
+    card: "border-blue-200 bg-blue-50/65",
+    icon: "bg-blue-700 text-white",
+    badge: "bg-blue-100 text-blue-800",
+    child: "bg-cyan-100 text-cyan-800",
+  },
+  {
+    card: "border-violet-200 bg-violet-50/65",
+    icon: "bg-violet-700 text-white",
+    badge: "bg-violet-100 text-violet-800",
+    child: "bg-fuchsia-100 text-fuchsia-800",
+  },
+  {
+    card: "border-orange-200 bg-orange-50/70",
+    icon: "bg-orange-600 text-white",
+    badge: "bg-orange-100 text-orange-800",
+    child: "bg-amber-100 text-amber-800",
+  },
+];
+
+const styleForDepth = (depth, hasChildren) =>
+  hasChildren ? levelStyles[Math.min(depth, levelStyles.length - 1)] : {
+    card: "border-border bg-white",
+    icon: "bg-surface-2 text-primary",
+    badge: "bg-muted text-muted-foreground",
+    child: "bg-muted text-muted-foreground",
+  };
+
+const metricCards = [
+  {
+    label: "Total",
+    key: "total",
+    helper: "Offices and sections",
+    icon: Layers,
+    className: "border-slate-200 bg-slate-50 text-slate-900",
+    iconClass: "bg-slate-900 text-white",
+  },
+  {
+    label: "Top Level",
+    key: "roots",
+    helper: "Main offices",
+    icon: Building2,
+    className: "border-blue-200 bg-blue-50 text-blue-950",
+    iconClass: "bg-blue-700 text-white",
+  },
+  {
+    label: "Under Parents",
+    key: "children",
+    helper: "Nested sections",
+    icon: GitBranch,
+    className: "border-violet-200 bg-violet-50 text-violet-950",
+    iconClass: "bg-violet-700 text-white",
+  },
+];
+
 const StructurePage = () => {
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +140,25 @@ const StructurePage = () => {
 
   const tree = useMemo(() => buildTree(units), [units]);
   const unitMap = useMemo(() => new Map(units.map((unit) => [String(getId(unit)), unit])), [units]);
+  const totals = useMemo(() => {
+    const rootCount = units.filter((unit) => !getId(unit.parent || unit.parentOfficeSection)).length;
+    return { total: units.length, roots: rootCount, children: units.length - rootCount };
+  }, [units]);
+  const formParentName = useMemo(() => (form.parent ? compactUnitName(unitMap.get(String(form.parent))) : ""), [form.parent, unitMap]);
+
+  const captureScrollPosition = () => ({ x: window.scrollX, y: window.scrollY });
+
+  const restoreScrollPosition = (position) => {
+    window.scrollTo(position.x, position.y);
+  };
+
+  const reloadUnitsInPlace = async () => {
+    const position = captureScrollPosition();
+    await loadUnits();
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => restoreScrollPosition(position));
+    });
+  };
 
   const openAdd = (parent = "") => {
     setForm({ ...blankForm, parent: getId(parent) });
@@ -115,7 +202,7 @@ const StructurePage = () => {
 
       setFormOpen(false);
       notifyResourceChanged("organization-units");
-      await loadUnits();
+      await reloadUnitsInPlace();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not save structure"));
     } finally {
@@ -145,7 +232,7 @@ const StructurePage = () => {
         })
       );
       notifyResourceChanged("organization-units");
-      await loadUnits();
+      await reloadUnitsInPlace();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not move section"));
     } finally {
@@ -155,32 +242,54 @@ const StructurePage = () => {
 
   const renderBranch = (items, depth = 0) =>
     items.map((unit, index) => {
-      const parent = unitMap.get(String(getId(unit.parent || unit.parentOfficeSection)));
+      const hasChildren = Boolean(unit.children?.length);
+      const styles = styleForDepth(depth, hasChildren);
       return (
-        <div key={getId(unit)} className="border-b border-border last:border-b-0">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" style={{ paddingLeft: `${16 + depth * 24}px` }}>
-            <div className="min-w-0">
-              <p className="font-semibold text-foreground">{compactUnitName(unit)}</p>
-              <p className="text-xs text-muted-foreground">
-                {unit.name}
-                {parent ? ` - under ${compactUnitName(parent)}` : ""}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button type="button" className="rounded-lg p-2 hover:bg-muted disabled:opacity-40" title="Move up" disabled={saving || index === 0} onClick={() => moveUnit(unit, "up")}>
-                <ArrowUp className="h-4 w-4" />
-              </button>
-              <button type="button" className="rounded-lg p-2 hover:bg-muted disabled:opacity-40" title="Move down" disabled={saving || index === items.length - 1} onClick={() => moveUnit(unit, "down")}>
-                <ArrowDown className="h-4 w-4" />
-              </button>
-              <button type="button" className="btn-ghost px-3 py-2 text-xs" onClick={() => openAdd(unit)}>
-                <Plus className="h-4 w-4" />
-                Add Under
-              </button>
-              <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => openEdit(unit)}>
-                <Pencil className="h-4 w-4" />
-                Edit
-              </button>
+        <div key={getId(unit)} className="relative">
+          {depth > 0 ? <span className="absolute bottom-0 top-0 w-px bg-border" style={{ left: `${18 + (depth - 1) * 26}px` }} /> : null}
+          <div className="group relative px-3 py-1.5" style={{ paddingLeft: `${12 + depth * 26}px` }}>
+            <div className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 shadow-sm transition group-hover:shadow-md ${styles.card}`}>
+              <div className="flex min-w-0 items-center gap-3">
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${styles.icon}`}>
+                  {hasChildren ? <GitBranch className="h-4 w-4" /> : <Building2 className="h-4 w-4" />}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-[15px] font-black text-foreground">{compactUnitName(unit)}</p>
+                    <span className={`rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] ${styles.badge}`}>
+                      Level {depth + 1}
+                    </span>
+                    {hasChildren ? (
+                      <span className={`rounded-md px-2 py-0.5 text-[10px] font-black ${styles.child}`}>
+                        {unit.children.length} under
+                      </span>
+                    ) : null}
+                  </div>
+                  {unit.code && unit.name !== unit.code ? <p className="mt-0.5 truncate text-xs text-muted-foreground">{unit.name}</p> : null}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-1.5">
+                <div className="inline-flex items-center overflow-hidden rounded-lg border border-border bg-white/75 shadow-sm">
+                  <span className="hidden border-r border-border px-2 text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground sm:inline-flex">
+                    <MoveVertical className="mr-1 h-3.5 w-3.5" />
+                    Move
+                  </span>
+                  <button type="button" className="px-2 py-2 text-foreground transition hover:bg-white disabled:text-muted-foreground/45" title="Move up" disabled={saving || index === 0} onClick={() => moveUnit(unit, "up")}>
+                    <ChevronUp className="h-4 w-4" />
+                  </button>
+                  <button type="button" className="border-l border-border px-2 py-2 text-foreground transition hover:bg-white disabled:text-muted-foreground/45" title="Move down" disabled={saving || index === items.length - 1} onClick={() => moveUnit(unit, "down")}>
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </div>
+                <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-primary/25 bg-white px-3 py-2 text-xs font-black text-primary shadow-sm transition hover:-translate-y-0.5 hover:bg-primary hover:text-white" onClick={() => openAdd(unit)}>
+                  <Plus className="h-4 w-4" />
+                  Add Under
+                </button>
+                <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-bold shadow-sm transition hover:-translate-y-0.5 hover:bg-white" onClick={() => openEdit(unit)}>
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </button>
+              </div>
             </div>
           </div>
           {unit.children?.length ? renderBranch(unit.children, depth + 1) : null}
@@ -189,36 +298,70 @@ const StructurePage = () => {
     });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader
-        title="Structure"
+        title="Offices / Sections"
         description="Manage parent-child office structure with short screen names for daily use."
         actions={
           <button type="button" className="btn-primary" onClick={() => openAdd()}>
             <Plus className="h-4 w-4" />
-            Add Office
+            Add Top Office
           </button>
         }
       />
 
-      <div className="overflow-hidden rounded-lg border border-border bg-surface">
-        {loading ? (
-          <div className="p-8 text-center text-sm font-semibold text-muted-foreground">Loading structure...</div>
-        ) : tree.length ? (
-          renderBranch(tree)
-        ) : (
-          <div className="p-8 text-center text-sm font-semibold text-muted-foreground">No structure found.</div>
-        )}
+      <div className="grid gap-2 md:grid-cols-3">
+        {metricCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <div key={card.key} className={`flex items-center justify-between rounded-lg border p-3 shadow-sm ${card.className}`}>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.12em] opacity-70">{card.label}</p>
+                <p className="text-xl font-black">{totals[card.key]}</p>
+                <p className="text-xs font-semibold opacity-70">{card.helper}</p>
+              </div>
+              <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${card.iconClass}`}>
+                <Icon className="h-5 w-5" />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="rounded-lg border border-border bg-surface p-2 shadow-sm">
+        <div className="mb-2 flex items-center gap-2 px-2 pt-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white">
+            <GitBranch className="h-4 w-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black">Hierarchy Preview</h3>
+            <p className="text-xs text-muted-foreground">Use Add Under and Move inside the same parent.</p>
+          </div>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-border bg-surface-2/40 p-1">
+          {loading ? (
+            <div className="p-8 text-center text-sm font-semibold text-muted-foreground">Loading structure...</div>
+          ) : tree.length ? (
+            renderBranch(tree)
+          ) : (
+            <div className="p-8 text-center text-sm font-semibold text-muted-foreground">No structure found.</div>
+          )}
+        </div>
       </div>
 
       <Modal
         open={formOpen}
-        title={form.id ? "Edit Structure" : "Add Structure"}
+        title={form.id ? "Edit Office / Section" : formParentName ? `Add Under ${formParentName}` : "Add Top Office"}
         description="Official name builds the hierarchy. Screen name is what users see in the sheet."
         onClose={() => setFormOpen(false)}
         size="sm"
       >
         <div className="space-y-4">
+          {formParentName ? (
+            <div className="rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 text-sm font-bold text-primary">
+              Parent: {formParentName}
+            </div>
+          ) : null}
           <label className="block">
             <span className="label-shell">Official Name</span>
             <input className="input-shell" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />

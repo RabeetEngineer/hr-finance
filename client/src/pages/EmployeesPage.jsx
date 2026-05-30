@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Pencil, Plus, Printer, Save, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Crown, FileDown, Pencil, Plus, Printer, RefreshCw, Save, Search, Star, Trash2, X } from "lucide-react";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import Modal from "@/components/common/Modal";
 import { employeeService } from "@/services/employeeService";
@@ -8,6 +9,7 @@ import { organizationUnitService } from "@/services/organizationUnitService";
 import { useAuth } from "@/hooks/useAuth";
 import { formatDate } from "@/utils/formatDate";
 import { getErrorMessage } from "@/utils/getErrorMessage";
+import { applyUiSettings } from "@/utils/applyUiSettings";
 import { notifyResourceChanged, subscribeResourceChanged } from "@/utils/resourceEvents";
 import { toast } from "sonner";
 
@@ -15,6 +17,7 @@ const blankForm = {
   fullName: "",
   fatherName: "",
   designationName: "",
+  serviceCadre: "",
   sectionName: "",
   personnelNumber: "",
   cnic: "",
@@ -56,6 +59,7 @@ const printColumnOptions = [
   { key: "name", label: "Name" },
   { key: "fatherName", label: "Father Name" },
   { key: "designation", label: "Designation" },
+  { key: "serviceCadre", label: "Service/Cadre" },
   { key: "section", label: "Section" },
   { key: "personnelNumber", label: "Personnel No." },
   { key: "cnic", label: "CNIC" },
@@ -63,11 +67,21 @@ const printColumnOptions = [
   { key: "dateOfBirth", label: "DOB" },
   { key: "joining", label: "Joining" },
   { key: "gender", label: "Gender" },
+  { key: "status", label: "Status" },
 ];
 
 const defaultPrintColumns = ["total", "name", "designation", "section"];
 const screenColumnOptions = printColumnOptions;
-const defaultScreenColumns = ["total", "sectionSerial", "name", "fatherName", "designation", "personnelNumber", "joining"];
+const defaultScreenColumns = ["total", "sectionSerial", "name", "fatherName", "designation", "personnelNumber", "joining", "status"];
+
+const savedColumnSetting = (key, fallback) => {
+  try {
+    const saved = JSON.parse(localStorage.getItem("hrf_ui_settings") || "{}");
+    return Array.isArray(saved[key]) && saved[key].length ? saved[key] : fallback;
+  } catch {
+    return fallback;
+  }
+};
 
 const getId = (item) => item?.id || item?._id || item || "";
 const clean = (value) => String(value || "").trim();
@@ -112,6 +126,7 @@ const employeeSearchText = (employee) =>
     employee.fullName,
     employee.fatherName,
     employee.designation?.name,
+    employee.serviceCadre,
     employee.currentOfficeSection?.name,
     employee.currentOfficeSection?.code,
     employee.personnelNumber,
@@ -124,13 +139,47 @@ const employeeSearchText = (employee) =>
     .toLowerCase();
 
 const compareText = (a, b) => clean(a).localeCompare(clean(b), undefined, { numeric: true, sensitivity: "base" });
+const statusLabel = (value) => clean(value).replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Active";
 
 const toggleValue = (values, value) => (values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
+const normalizeSearch = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/\baddl\.?\b/g, "additional")
+    .replace(/\bdy\.?\b/g, "deputy")
+    .replace(/\bsecy\b/g, "secretary")
+    .replace(/\bfin\.?\b/g, "finance")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const MultiSelect = ({ label, options, values, onChange, maxVisible = 2, summaryMode = "names" }) => {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const ref = useRef(null);
   const selectedLabels = options.filter((option) => values.includes(option.value)).map((option) => option.label);
+  const filteredOptions = useMemo(() => {
+    const needle = normalizeSearch(search);
+    if (!needle) return options;
+    const scoreOption = (option) => {
+      const label = normalizeSearch(option.label);
+      const name = normalizeSearch(option.name);
+      const hint = normalizeSearch(option.hint);
+      const pathText = normalizeSearch(option.pathText);
+      const searchText = normalizeSearch(option.searchText);
+      const directText = `${label} ${name}`.trim();
+      if (label === needle || name === needle) return 0;
+      if (label.startsWith(needle) || name.startsWith(needle)) return 1;
+      if (directText.includes(needle)) return 2;
+      if (hint.includes(needle)) return 5;
+      if (pathText.includes(needle) || searchText.includes(needle)) return 8;
+      return 99;
+    };
+    return options
+      .map((option) => ({ option, score: scoreOption(option) }))
+      .filter((row) => row.score < 99)
+      .sort((a, b) => a.score - b.score || String(a.option.label).localeCompare(String(b.option.label), undefined, { sensitivity: "base" }))
+      .map((row) => row.option);
+  }, [options, search]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -150,10 +199,10 @@ const MultiSelect = ({ label, options, values, onChange, maxVisible = 2, summary
 
   return (
     <div className="relative" ref={ref}>
-      <button type="button" className="flex min-h-[38px] w-full items-center justify-between gap-2 rounded-lg border border-border bg-white px-3 py-2 text-left text-sm" onClick={() => setOpen((value) => !value)}>
+      <button type="button" className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-border bg-white px-3 py-1.5 text-left text-sm" onClick={() => setOpen((value) => !value)}>
         <span className="min-w-0">
-          <span className="block truncate text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
-          <span className="block truncate text-foreground">
+          <span className="block truncate text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
+          <span className="block truncate text-xs font-semibold text-foreground">
             {summaryMode === "count" && selectedLabels.length ? `${selectedLabels.length} selected` : selectedLabels.length ? selectedLabels.slice(0, maxVisible).join(", ") : "All"}
             {summaryMode !== "count" && selectedLabels.length > maxVisible ? ` +${selectedLabels.length - maxVisible}` : ""}
           </span>
@@ -161,11 +210,27 @@ const MultiSelect = ({ label, options, values, onChange, maxVisible = 2, summary
         <span className="text-xs text-muted-foreground">{selectedLabels.length || ""}</span>
       </button>
       {open ? (
-        <div className="absolute left-0 top-full z-30 mt-1 max-h-72 w-72 overflow-auto rounded-lg border border-border bg-surface p-2 shadow-soft">
-        <button type="button" className="mb-2 w-full rounded-md px-2 py-1 text-left text-xs font-semibold text-muted-foreground hover:bg-muted" onClick={() => onChange([])}>
-          Clear
-        </button>
-        {options.map((option) => (
+        <div className="absolute left-0 top-full z-30 mt-1 w-80 overflow-hidden rounded-lg border border-border bg-surface shadow-soft">
+        <div className="border-b border-border bg-surface p-2">
+          <input
+            className="input-shell h-9 rounded-md px-3 py-1.5 text-xs"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            onInput={(event) => setSearch(event.currentTarget.value)}
+            placeholder={`Search ${label.toLowerCase()}...`}
+            autoFocus
+          />
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button type="button" className="rounded-md border border-border px-2 py-1.5 text-xs font-bold text-foreground hover:bg-muted" onClick={() => onChange(options.map((option) => option.value))}>
+              Select all
+            </button>
+            <button type="button" className="rounded-md border border-border px-2 py-1.5 text-xs font-bold text-muted-foreground hover:bg-muted" onClick={() => onChange([])}>
+              Unselect all
+            </button>
+          </div>
+        </div>
+        <div className="max-h-64 overflow-auto p-2">
+        {filteredOptions.length ? filteredOptions.map((option) => (
           <label key={option.value} className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted">
             <input type="checkbox" className="mt-1" checked={values.includes(option.value)} onChange={() => onChange(toggleValue(values, option.value))} />
             <span>
@@ -173,7 +238,8 @@ const MultiSelect = ({ label, options, values, onChange, maxVisible = 2, summary
               {option.hint ? <span className="block text-xs text-muted-foreground">{option.hint}</span> : null}
             </span>
           </label>
-        ))}
+        )) : <div className="px-2 py-4 text-center text-xs font-semibold text-muted-foreground">No matching option.</div>}
+        </div>
         </div>
       ) : null}
     </div>
@@ -239,18 +305,21 @@ const SearchableSelect = ({ label, value, options, onChange, placeholder = "Sear
   );
 };
 
-const EmployeesPage = () => {
+const EmployeesPage = ({ publicMode = false }) => {
   const { user } = useAuth();
   const [employees, setEmployees] = useState([]);
   const [sections, setSections] = useState([]);
   const [designations, setDesignations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [filters, setFilters] = useState({ q: "", designations: [], sections: [], gender: "", sort: "hierarchy", pageSize: 100 });
-  const [screenColumns, setScreenColumns] = useState(defaultScreenColumns);
-  const [printColumns, setPrintColumns] = useState(defaultPrintColumns);
+  const [filters, setFilters] = useState({ q: "", designations: [], sections: [], gender: "", sort: "hierarchy", pageSize: 25 });
+  const [employeeMeta, setEmployeeMeta] = useState({ page: 1, limit: 25, total: 0, pages: 1 });
+  const [sectionCounts, setSectionCounts] = useState({});
+  const [screenColumns, setScreenColumns] = useState(() => savedColumnSetting("screenColumns", defaultScreenColumns));
+  const [printColumns, setPrintColumns] = useState(() => savedColumnSetting("printColumns", defaultPrintColumns));
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
+  const [formMode, setFormMode] = useState("edit");
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [form, setForm] = useState(blankForm);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -260,54 +329,121 @@ const EmployeesPage = () => {
   const [sectionFormOpen, setSectionFormOpen] = useState(false);
   const [sectionForm, setSectionForm] = useState(blankSectionForm);
   const [uiSettings, setUiSettings] = useState(defaultUiSettings);
+  const employeeRequestRef = useRef(0);
+  const sectionCountRequestRef = useRef(0);
 
   useEffect(() => {
     const loadSettings = () => setUiSettings({ ...defaultUiSettings, ...JSON.parse(localStorage.getItem("hrf_ui_settings") || "{}") });
+    applyUiSettings();
     loadSettings();
     window.addEventListener("hrf-ui-settings-changed", loadSettings);
-    return () => window.removeEventListener("hrf-ui-settings-changed", loadSettings);
+    window.addEventListener("hrf-ui-settings-changed", applyUiSettings);
+    return () => {
+      window.removeEventListener("hrf-ui-settings-changed", loadSettings);
+      window.removeEventListener("hrf-ui-settings-changed", applyUiSettings);
+    };
   }, []);
 
-  const loadData = async () => {
-    setLoading(true);
+  const employeeQueryParams = useCallback(
+    (overrides = {}) => {
+      const sortMap = {
+        hierarchy: "hierarchy",
+        name: "fullName",
+        personnel: "personnelNumber fullName",
+        gender: "gender fullName",
+        designation: "sortOrder fullName",
+        section: "sortOrder fullName",
+      };
+
+      return {
+        page,
+        limit: filters.pageSize,
+        sort: sortMap[filters.sort] || "sortOrder fullName",
+        status: "active",
+        q: clean(filters.q) || undefined,
+        designationIds: filters.designations.length ? filters.designations.join(",") : undefined,
+        sectionIds: filters.sections.length ? filters.sections.join(",") : undefined,
+        gender: filters.gender || undefined,
+        ...overrides,
+      };
+    },
+    [filters, page]
+  );
+
+  const loadMasterData = useCallback(async () => {
     try {
-      const [employeeRows, sectionRows, designationRows] = await Promise.all([
-        fetchAll(employeeService, { sort: "sortOrder fullName", status: "active" }),
+      const [sectionRows, designationRows] = await Promise.all([
         fetchAll(organizationUnitService, { isActive: "true", sort: "sortOrder name" }),
         fetchAll(designationService, { isActive: "true", sort: "sortOrder name" }),
       ]);
 
-      setEmployees(employeeRows);
       setSections(sectionRows);
       setDesignations(designationRows);
     } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to load incumbency sheet"));
-    } finally {
-      setLoading(false);
+      toast.error(getErrorMessage(error, "Failed to load offices and designations"));
     }
-  };
+  }, []);
+
+  const loadEmployees = useCallback(async () => {
+    const requestId = employeeRequestRef.current + 1;
+    employeeRequestRef.current = requestId;
+    setLoading(true);
+    try {
+      const response = await employeeService.list(employeeQueryParams());
+      if (requestId !== employeeRequestRef.current) return;
+      setEmployees(response.data.data || []);
+      setEmployeeMeta(response.data.meta || { page, limit: filters.pageSize, total: 0, pages: 1 });
+    } catch (error) {
+      if (requestId !== employeeRequestRef.current) return;
+      toast.error(getErrorMessage(error, "Failed to load employees"));
+    } finally {
+      if (requestId === employeeRequestRef.current) setLoading(false);
+    }
+  }, [employeeQueryParams, filters.pageSize, page]);
+
+  const loadSectionCounts = useCallback(async () => {
+    const requestId = sectionCountRequestRef.current + 1;
+    sectionCountRequestRef.current = requestId;
+    try {
+      const response = await employeeService.sectionCounts(employeeQueryParams({ page: undefined, limit: undefined, sectionIds: undefined, sort: undefined }));
+      if (requestId !== sectionCountRequestRef.current) return;
+      const nextCounts = {};
+      (response.data.data || []).forEach((row) => {
+        nextCounts[String(row.sectionId || "unassigned")] = Number(row.count || 0);
+      });
+      setSectionCounts(nextCounts);
+    } catch {
+      if (requestId !== sectionCountRequestRef.current) return;
+      setSectionCounts({});
+    }
+  }, [employeeQueryParams]);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadMasterData();
+  }, [loadMasterData]);
+
+  useEffect(() => {
+    loadEmployees();
+    loadSectionCounts();
+  }, [loadEmployees, loadSectionCounts]);
 
   useEffect(() => {
     const unsubscribe = subscribeResourceChanged(({ resource }) => {
-      if (["employees", "organization-units", "designations"].includes(resource)) loadData();
+      if (resource === "employees") {
+        loadEmployees();
+        loadSectionCounts();
+      }
+      if (["organization-units", "designations"].includes(resource)) {
+        loadMasterData();
+      }
     });
 
-    const reloadOnFocus = () => loadData();
-    window.addEventListener("focus", reloadOnFocus);
+    return () => unsubscribe();
+  }, [loadEmployees, loadMasterData, loadSectionCounts]);
 
-    return () => {
-      unsubscribe();
-      window.removeEventListener("focus", reloadOnFocus);
-    };
-  }, []);
-
-  const canEditEmployees = ["super_admin", "admin", "data_entry"].includes(user?.role);
-  const canManageStructure = ["super_admin", "admin"].includes(user?.role);
-  const canDeleteEmployees = ["super_admin", "admin"].includes(user?.role);
+  const canEditEmployees = !publicMode && ["super_admin", "admin", "data_entry"].includes(user?.role);
+  const canManageStructure = !publicMode && ["super_admin", "admin"].includes(user?.role);
+  const canDeleteEmployees = !publicMode && ["super_admin", "admin"].includes(user?.role);
   const showActions = canEditEmployees || canManageStructure || canDeleteEmployees;
   const visibleScreenColumns = useMemo(() => {
     const selected = screenColumnOptions.filter((option) => screenColumns.includes(option.key));
@@ -315,59 +451,52 @@ const EmployeesPage = () => {
   }, [screenColumns]);
   const tableColSpan = visibleScreenColumns.length + (showActions ? 1 : 0);
 
-  useEffect(() => {
+  const updateFilters = (patch) => {
     setPage(1);
-  }, [filters.q, filters.designations, filters.sections, filters.gender, filters.sort, filters.pageSize]);
+    setFilters((current) => ({ ...current, ...patch }));
+  };
 
   const sectionsById = useMemo(() => new Map(sections.map((section) => [String(getId(section)), section])), [sections]);
-  const designationNames = useMemo(() => {
-    const names = new Set(designations.map((designation) => designation.name).filter(Boolean));
-    employees.forEach((employee) => {
-      if (employee.designation?.name) names.add(employee.designation.name);
-    });
-    return [...names].sort(compareText);
-  }, [designations, employees]);
-  const designationOptions = useMemo(() => designationNames.map((name) => ({ value: name, label: name })), [designationNames]);
+  const designationOptions = useMemo(
+    () =>
+      designations
+        .filter((designation) => designation.isActive !== false)
+        .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || compareText(a.name, b.name))
+        .map((designation) => ({ value: getId(designation), label: designation.name })),
+    [designations]
+  );
   const activeDesignationOptions = useMemo(
     () =>
       designations
         .filter((designation) => designation.isActive !== false)
         .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || compareText(a.name, b.name))
-        .map((designation) => ({ value: designation.name, label: designation.name, hint: [designation.bps ? `BPS ${designation.bps}` : "", designation.service].filter(Boolean).join(" - ") })),
+        .map((designation) => ({ value: designation.name, label: designation.name, hint: designation.bps ? `BPS ${designation.bps}` : "" })),
     [designations]
   );
   const sectionOptions = useMemo(
     () =>
       [...sections]
         .sort((a, b) => compareText(compactUnitName(a), compactUnitName(b)))
-        .map((section) => ({ id: getId(section), value: getId(section), label: compactUnitName(section), hint: parentHint(section, sectionsById), name: section.name })),
+        .map((section) => ({
+          id: getId(section),
+          value: getId(section),
+          label: compactUnitName(section),
+          hint: parentHint(section, sectionsById),
+          name: section.name,
+          searchText: [section.name, section.code, section.path, compactUnitName(section), parentHint(section, sectionsById)].filter(Boolean).join(" "),
+          pathText: section.path || "",
+        })),
     [sections, sectionsById]
   );
   const employeeSectionOptions = useMemo(
     () => sectionOptions.map((section) => ({ ...section, value: section.label })),
     [sectionOptions]
   );
-
+  const selectedSectionId = filters.sections.length === 1 ? filters.sections[0] : "";
+  const selectedSection = selectedSectionId ? sectionsById.get(String(selectedSectionId)) : null;
   const filteredEmployees = useMemo(() => {
-    const text = filters.q.trim().toLowerCase();
-
-    return employees.filter((employee) => {
-      const designation = employee.designation?.name || "";
-      const sectionId = getId(employee.currentOfficeSection);
-      const gender = employee.gender || "";
-
-      if (text && !employeeSearchText(employee).includes(text)) return false;
-      if (
-        filters.designations.length &&
-        !filters.designations.some((selected) => sameText(designation, selected) || designation.toLowerCase().includes(selected.toLowerCase()) || selected.toLowerCase().includes(designation.toLowerCase()))
-      ) {
-        return false;
-      }
-      if (filters.sections.length && !filters.sections.some((selected) => String(sectionId) === String(selected))) return false;
-      if (filters.gender && gender !== filters.gender) return false;
-      return true;
-    });
-  }, [employees, filters]);
+    return employees;
+  }, [employees]);
 
   const hierarchySections = useMemo(() => {
     const groups = new Map();
@@ -428,7 +557,7 @@ const EmployeesPage = () => {
 
     const ordered = [];
     const visited = new Set();
-    const includeEmptySections = !filters.q.trim() && !filters.designations.length && !filters.sections.length && !filters.gender;
+    const includeEmptySections = false;
 
     const visit = (groupId, depth = 0) => {
       if (visited.has(groupId) || !groups.has(groupId)) return;
@@ -459,12 +588,14 @@ const EmployeesPage = () => {
     return rows;
   }, [filteredEmployees, filters.sort]);
 
+  const serverRowOffset = (page - 1) * (Number(filters.pageSize) || 25);
+
   const displayRows = useMemo(() => {
     if (filters.sort !== "hierarchy") {
-      return sortedEmployees.map((employee, index) => ({ type: "employee", employee, globalIndex: index + 1, sectionIndex: null }));
+      return sortedEmployees.map((employee, index) => ({ type: "employee", employee, globalIndex: serverRowOffset + index + 1, sectionIndex: null }));
     }
 
-    let globalIndex = 0;
+    let globalIndex = serverRowOffset;
     return hierarchySections.flatMap((section) => {
       const header = [{ type: "section", section }];
       const rows = section.rows.map((employee, index) => {
@@ -474,46 +605,18 @@ const EmployeesPage = () => {
       if (!rows.length) return [...header, { type: "empty", section }];
       return [...header, ...rows];
     });
-  }, [filters.sort, hierarchySections, sortedEmployees]);
+  }, [filters.sort, hierarchySections, serverRowOffset, sortedEmployees]);
 
   const employeeDisplayRows = displayRows.filter((row) => row.type === "employee");
-  const totalEmployees = employeeDisplayRows.length;
-  const pageSize = Number(filters.pageSize) || 100;
-  const totalPages = Math.max(Math.ceil(totalEmployees / pageSize), 1);
+  const totalEmployees = Number(employeeMeta.total || employeeDisplayRows.length);
+  const pageSize = Number(employeeMeta.limit || filters.pageSize) || 25;
+  const totalPages = Math.max(Number(employeeMeta.pages || 1), 1);
   const startEmployee = (page - 1) * pageSize;
-  const endEmployee = startEmployee + pageSize;
+  const endEmployee = startEmployee + employeeDisplayRows.length;
 
   const pagedRows = useMemo(() => {
-    if (filters.sort !== "hierarchy") return employeeDisplayRows.slice(startEmployee, endEmployee);
-
-    let seenEmployees = 0;
-    let activeSectionIncluded = false;
-    const rows = [];
-
-    displayRows.forEach((row) => {
-      if (row.type === "section") {
-        activeSectionIncluded = false;
-        return;
-      }
-
-      if (row.type === "empty") {
-        if (startEmployee === 0 && endEmployee > 0) rows.push({ type: "section", section: row.section }, row);
-        return;
-      }
-
-      const inPage = seenEmployees >= startEmployee && seenEmployees < endEmployee;
-      if (inPage) {
-        if (!activeSectionIncluded) {
-          rows.push({ type: "section", section: row.section });
-          activeSectionIncluded = true;
-        }
-        rows.push(row);
-      }
-      seenEmployees += 1;
-    });
-
-    return rows;
-  }, [displayRows, employeeDisplayRows, endEmployee, filters.sort, startEmployee]);
+    return filters.sort === "hierarchy" ? displayRows : employeeDisplayRows;
+  }, [displayRows, employeeDisplayRows, filters.sort]);
 
   const selectedPrintOptions = useMemo(() => {
     const selected = printColumnOptions.filter((option) => printColumns.includes(option.key));
@@ -532,6 +635,7 @@ const EmployeesPage = () => {
       name: employee.fullName || "",
       fatherName: employee.fatherName || "",
       designation: employee.designation?.name || "",
+      serviceCadre: employee.serviceCadre || "",
       section: compactUnitName(employee.currentOfficeSection) || "",
       personnelNumber: employee.personnelNumber || "",
       cnic: employee.cnic || "",
@@ -539,6 +643,7 @@ const EmployeesPage = () => {
       dateOfBirth: formatDate(employee.dateOfBirth),
       joining: formatDate(employee.dateOfJoiningCurrentDepartment || employee.dateOfJoiningGovernmentService),
       gender: employee.gender || "",
+      status: employee.isOfficeHead ? "Head" : statusLabel(employee.employmentStatus || "active"),
     };
 
     return values[key] || "";
@@ -549,21 +654,24 @@ const EmployeesPage = () => {
   const stats = useMemo(() => {
     const male = filteredEmployees.filter((employee) => employee.gender === "male").length;
     const female = filteredEmployees.filter((employee) => employee.gender === "female").length;
-    return { total: filteredEmployees.length, sections: hierarchySections.filter((section) => section.rows.length).length, male, female };
-  }, [filteredEmployees, hierarchySections]);
+    return { total: totalEmployees, sections: Object.values(sectionCounts).filter((count) => count > 0).length, male, female };
+  }, [filteredEmployees, sectionCounts, totalEmployees]);
 
   const openAddForm = (sectionName = "") => {
     setEditingEmployee(null);
+    setFormMode("add");
     setForm({ ...blankForm, sectionName });
     setFormOpen(true);
   };
 
-  const openEditForm = (employee) => {
+  const openEditForm = (employee, mode = "edit") => {
     setEditingEmployee(employee);
+    setFormMode(mode);
     setForm({
       fullName: employee.fullName || "",
       fatherName: employee.fatherName || "",
       designationName: employee.designation?.name || "",
+      serviceCadre: employee.serviceCadre || "",
       sectionName: compactUnitName(employee.currentOfficeSection) || "",
       personnelNumber: employee.personnelNumber || "",
       cnic: employee.cnic || "",
@@ -577,6 +685,39 @@ const EmployeesPage = () => {
       retirementDate: dateInputValue(employee.retirementDate),
     });
     setFormOpen(true);
+  };
+
+  const openTransferForm = (employee) => {
+    openEditForm(employee, "transfer");
+    toast.info("Office / Section change kar ke Save karein, ya Incumbency Action se another department / retirement choose karein.");
+  };
+
+  const captureScrollPosition = () => {
+    const sheet = document.querySelector(".sheet-scroll");
+    return {
+      windowX: window.scrollX,
+      windowY: window.scrollY,
+      sheetLeft: sheet?.scrollLeft || 0,
+      sheetTop: sheet?.scrollTop || 0,
+    };
+  };
+
+  const restoreScrollPosition = (position) => {
+    window.scrollTo(position.windowX, position.windowY);
+    const sheet = document.querySelector(".sheet-scroll");
+    if (sheet) {
+      sheet.scrollLeft = position.sheetLeft;
+      sheet.scrollTop = position.sheetTop;
+    }
+  };
+
+  const reloadDataInPlace = async () => {
+    const position = captureScrollPosition();
+    await loadEmployees();
+    await loadSectionCounts();
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => restoreScrollPosition(position));
+    });
   };
 
   const openAddSection = (parentId = "") => {
@@ -615,6 +756,7 @@ const EmployeesPage = () => {
       fullName,
       fatherName: clean(form.fatherName) || undefined,
       designation,
+      serviceCadre: clean(form.serviceCadre) || undefined,
       currentOfficeSection,
       currentSeat: null,
       personnelNumber: clean(form.personnelNumber) || undefined,
@@ -646,7 +788,7 @@ const EmployeesPage = () => {
 
       setFormOpen(false);
       notifyResourceChanged("employees");
-      await loadData();
+      await reloadDataInPlace();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not save row"));
     } finally {
@@ -662,7 +804,7 @@ const EmployeesPage = () => {
       setDeleteTarget(null);
       toast.success("Row deleted");
       notifyResourceChanged("employees");
-      await loadData();
+      await reloadDataInPlace();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not delete row"));
     } finally {
@@ -670,8 +812,11 @@ const EmployeesPage = () => {
     }
   };
 
-  const moveRow = async (section, rowIndex, direction) => {
-    const rows = section.rows || [];
+  const moveRow = async (section, employeeId, direction) => {
+    const rows = section?.id
+      ? await fetchAll(employeeService, { section: section.id, sort: "sortOrder fullName", status: "active" })
+      : section.rows || [];
+    const rowIndex = rows.findIndex((employee) => String(getId(employee)) === String(employeeId));
     const targetIndex = direction === "up" ? rowIndex - 1 : rowIndex + 1;
     if (targetIndex < 0 || targetIndex >= rows.length) return;
 
@@ -685,9 +830,23 @@ const EmployeesPage = () => {
         orderedRows.map((employee, index) => employeeService.update(getId(employee), { sortOrder: (index + 1) * 10 }))
       );
       notifyResourceChanged("employees");
-      await loadData();
+      await reloadDataInPlace();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not move row"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleOfficeHead = async (employee) => {
+    setSaving(true);
+    try {
+      await employeeService.update(getId(employee), { isOfficeHead: !employee.isOfficeHead });
+      toast.success(employee.isOfficeHead ? "Office head mark removed" : "Office head highlighted");
+      notifyResourceChanged("employees");
+      await reloadDataInPlace();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not update office head"));
     } finally {
       setSaving(false);
     }
@@ -714,7 +873,7 @@ const EmployeesPage = () => {
       toast.success("Section renamed");
       setRenamingSection(null);
       notifyResourceChanged("organization-units");
-      await loadData();
+      await reloadDataInPlace();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not rename section"));
     } finally {
@@ -741,7 +900,7 @@ const EmployeesPage = () => {
       toast.success("Section added");
       setSectionFormOpen(false);
       notifyResourceChanged("organization-units");
-      await loadData();
+      await reloadDataInPlace();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not add section"));
     } finally {
@@ -750,21 +909,23 @@ const EmployeesPage = () => {
   };
 
   const resetFilters = () => {
-    setFilters({ q: "", designations: [], sections: [], gender: "", sort: "hierarchy", pageSize: 100 });
+    setPage(1);
+    setFilters({ q: "", designations: [], sections: [], gender: "", sort: "hierarchy", pageSize: 25 });
   };
 
-  const exportSheet = () => {
+  const exportSheet = async () => {
     const csvRows = [];
     csvRows.push(visibleScreenColumns.map((column) => column.label));
 
-    displayRows.forEach((row) => {
-      if (row.type === "section") {
-        csvRows.push([row.section.name, ...Array(Math.max(visibleScreenColumns.length - 1, 0)).fill("")]);
-        return;
-      }
-      if (row.type !== "employee") return;
-      csvRows.push(visibleScreenColumns.map((column) => screenCellValue(row, column.key) || ""));
-    });
+    try {
+      const rows = await fetchAll(employeeService, employeeQueryParams({ page: 1, limit: 200 }));
+      rows.forEach((employee, index) => {
+        csvRows.push(visibleScreenColumns.map((column) => screenCellValue({ type: "employee", employee, globalIndex: index + 1, sectionIndex: "" }, column.key) || ""));
+      });
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not export employees"));
+      return;
+    }
 
     const csv = csvRows.map((row) => row.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -786,48 +947,62 @@ const EmployeesPage = () => {
         </p>
       </div>
 
-      <div className="no-print rounded-lg border border-border bg-surface px-3 py-3 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="no-print rounded-xl border border-border bg-surface px-3 py-2 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Punjab Finance</p>
-            <h1 className="text-xl font-bold text-foreground">Incumbency Sheet</h1>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-700">Punjab Finance Department</p>
+            <h1 className="text-lg font-black text-foreground">{selectedSection ? compactUnitName(selectedSection) : "Employee Directory"}</h1>
+            {publicMode ? <p className="mt-1 text-xs text-muted-foreground">Public read-only view</p> : null}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs font-semibold">Rows {stats.total}</span>
-            <span className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs font-semibold">Sections {stats.sections}</span>
-            <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={printSheet}>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs font-bold">{stats.total} employees</span>
+            <span className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs font-bold">{stats.sections} sections</span>
+            <span className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs font-bold">Showing {employeeDisplayRows.length}</span>
+            <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" disabled={loading} onClick={reloadDataInPlace}>
+              <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+              Refresh
+            </button>
+            <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" onClick={printSheet}>
               <Printer className="h-4 w-4" />
               Print
             </button>
-            <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={exportSheet}>
+            <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" onClick={exportSheet}>
+              <FileDown className="h-4 w-4" />
               Export Excel
             </button>
+            {publicMode ? (
+              <Link to="/login" className="btn-primary px-2.5 py-1.5 text-xs">
+                Login to edit
+              </Link>
+            ) : null}
             {canManageStructure ? (
-              <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => openAddSection()}>
+              <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" onClick={() => openAddSection()}>
                 <Plus className="h-4 w-4" />
-                Section
+                Add Section
               </button>
             ) : null}
             {canEditEmployees ? (
-              <button type="button" className="btn-primary px-3 py-2 text-xs" onClick={() => openAddForm()}>
+              <button type="button" className="btn-primary px-2.5 py-1.5 text-xs" onClick={() => openAddForm()}>
                 <Plus className="h-4 w-4" />
-                Row
+                Add Employee
               </button>
             ) : null}
           </div>
         </div>
 
-        <div className="mt-3 space-y-2">
-          <div className="grid gap-2 lg:grid-cols-[minmax(260px,1.5fr)_minmax(190px,0.9fr)_minmax(190px,0.9fr)_150px]">
+        <div className="mt-1.5 grid gap-2 lg:grid-cols-[minmax(260px,1.4fr)_minmax(170px,0.8fr)_minmax(170px,0.8fr)_130px]">
+          <label className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
-              className="input-shell rounded-lg px-3 py-2"
+              className="input-shell h-10 rounded-lg py-2 pl-9 pr-3"
               value={filters.q}
-              onChange={(event) => setFilters((current) => ({ ...current, q: event.target.value }))}
+              onChange={(event) => updateFilters({ q: event.target.value })}
               placeholder="Search name, CNIC, designation, section, cell..."
             />
-            <MultiSelect label="Designations" options={designationOptions} values={filters.designations} onChange={(values) => setFilters((current) => ({ ...current, designations: values }))} />
-            <MultiSelect label="Offices / Sections" options={sectionOptions} values={filters.sections} onChange={(values) => setFilters((current) => ({ ...current, sections: values }))} />
-            <select className="input-shell rounded-lg px-3 py-2" value={filters.gender} onChange={(event) => setFilters((current) => ({ ...current, gender: event.target.value }))}>
+          </label>
+          <MultiSelect label="Designations" options={designationOptions} values={filters.designations} onChange={(values) => updateFilters({ designations: values })} />
+          <MultiSelect label="Offices / Sections" options={sectionOptions} values={filters.sections} onChange={(values) => updateFilters({ sections: values })} />
+          <select className="input-shell rounded-lg px-3 py-2" value={filters.gender} onChange={(event) => updateFilters({ gender: event.target.value })}>
               <option value="">All gender</option>
               {genderOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -835,18 +1010,18 @@ const EmployeesPage = () => {
                 </option>
               ))}
             </select>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-2/70 p-2">
-            <span className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">View</span>
-            <select className="input-shell min-w-36 max-w-44 rounded-lg px-3 py-2" value={filters.sort} onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value }))}>
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-surface-2/70 p-1.5">
+          <span className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">View</span>
+          <select className="input-shell h-9 min-w-36 max-w-44 rounded-lg px-3 py-1.5" value={filters.sort} onChange={(event) => updateFilters({ sort: event.target.value })}>
               {sortOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
             </select>
-            <select className="input-shell min-w-32 max-w-40 rounded-lg px-3 py-2" value={filters.pageSize} onChange={(event) => setFilters((current) => ({ ...current, pageSize: Number(event.target.value) }))}>
-              {[50, 100, 150, 250, 500, 1000].map((size) => (
+          <select className="input-shell h-9 min-w-32 max-w-40 rounded-lg px-3 py-1.5" value={filters.pageSize} onChange={(event) => updateFilters({ pageSize: Number(event.target.value) })}>
+              {[25, 50, 100, 150, 200, 500, 700, 800].map((size) => (
                 <option key={size} value={size}>
                   {size} rows
                 </option>
@@ -868,18 +1043,19 @@ const EmployeesPage = () => {
               summaryMode="count"
               onChange={(values) => setPrintColumns(values.length ? values : defaultPrintColumns)}
             />
-            <button type="button" className="btn-ghost ml-auto rounded-lg px-3 py-2 text-xs" onClick={resetFilters}>
-              Reset filters
-            </button>
-          </div>
+          <button type="button" className="btn-ghost ml-auto rounded-lg px-3 py-2 text-xs" onClick={resetFilters}>
+            Reset filters
+          </button>
         </div>
       </div>
 
-      <div className="screen-only overflow-hidden rounded-lg border border-border bg-surface print:border-0">
+      <div className="screen-only">
+        <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm print:border-0">
         {loading ? (
           <div className="p-8 text-center text-sm font-semibold text-muted-foreground">Loading incumbency sheet...</div>
         ) : (
-          <div className="sheet-scroll">
+          <>
+          <div className="sheet-scroll hidden md:block">
             <table className="incumbency-table w-full min-w-fit border-collapse text-xs">
               <thead>
                 <tr>
@@ -899,9 +1075,8 @@ const EmployeesPage = () => {
                         <tr key={`section-${row.section.id}-${index}`} className="section-row">
                           <td colSpan={tableColSpan} style={{ paddingLeft: `${10 + Number(row.section.depth || 0) * 18}px` }}>
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span>
+                              <span className="text-sm md:text-[15px]">
                                 {row.section.name}
-                                {row.section.parentName ? <em> under {row.section.parentName}</em> : null}
                               </span>
                               {showActions ? (
                                 <span className="no-print inline-flex items-center gap-2">
@@ -941,21 +1116,33 @@ const EmployeesPage = () => {
 
                     const employee = row.employee;
                     return (
-                      <tr key={getId(employee)}>
+                      <tr key={getId(employee)} className={employee.isOfficeHead ? "office-head-row" : undefined}>
                         {visibleScreenColumns.map((column) => (
                           <td key={column.key} className={column.key === "name" ? "font-semibold text-foreground" : column.key === "gender" ? "capitalize" : undefined}>
-                            {screenCellValue(row, column.key) || "-"}
+                            {column.key === "name" ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                {employee.isOfficeHead ? <Crown className="h-3.5 w-3.5 text-amber-600" /> : null}
+                                {screenCellValue(row, column.key) || "-"}
+                              </span>
+                            ) : (
+                              screenCellValue(row, column.key) || "-"
+                            )}
                           </td>
                         ))}
                         {showActions ? (
                           <td className="no-print">
                             <div className="flex justify-end gap-1">
+                              {canEditEmployees ? (
+                                <button type="button" className={employee.isOfficeHead ? "icon-action text-amber-700" : "icon-action"} title={employee.isOfficeHead ? "Remove head highlight" : "Mark as office head"} disabled={saving} onClick={() => toggleOfficeHead(employee)}>
+                                  <Star className={employee.isOfficeHead ? "h-3.5 w-3.5 fill-current" : "h-3.5 w-3.5"} />
+                                </button>
+                              ) : null}
                               {canEditEmployees && row.section ? (
                                 <>
-                                  <button type="button" className="icon-action" title="Move up" disabled={saving || row.sectionIndex === 1} onClick={() => moveRow(row.section, row.sectionIndex - 1, "up")}>
+                                  <button type="button" className="icon-action" title="Move up" disabled={saving || row.sectionIndex === 1} onClick={() => moveRow(row.section, getId(employee), "up")}>
                                     <ArrowUp className="h-3.5 w-3.5" />
                                   </button>
-                                  <button type="button" className="icon-action" title="Move down" disabled={saving || row.sectionIndex === row.section.rows.length} onClick={() => moveRow(row.section, row.sectionIndex - 1, "down")}>
+                                  <button type="button" className="icon-action" title="Move down" disabled={saving || row.sectionIndex === row.section.rows.length} onClick={() => moveRow(row.section, getId(employee), "down")}>
                                     <ArrowDown className="h-3.5 w-3.5" />
                                   </button>
                                 </>
@@ -986,7 +1173,87 @@ const EmployeesPage = () => {
               </tbody>
             </table>
           </div>
+          <div className="space-y-3 p-2 md:hidden">
+            {pagedRows.length ? (
+              pagedRows.map((row, index) => {
+                if (row.type === "section") {
+                  return (
+                    <div key={`mobile-section-${row.section.id}-${index}`} className="rounded-xl border border-border bg-surface-2 px-3 py-3">
+                      <p className="text-base font-black">{row.section.name}</p>
+                    </div>
+                  );
+                }
+                if (row.type !== "employee") return null;
+                const employee = row.employee;
+                const mobileDetailColumns = visibleScreenColumns.filter((column) => !["name", "designation"].includes(column.key));
+                return (
+                  <div key={`mobile-employee-${getId(employee)}`} className={employee.isOfficeHead ? "rounded-xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm" : "rounded-xl border border-border bg-surface p-4 shadow-sm"}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="inline-flex items-center gap-1.5 text-base font-black">
+                          {employee.isOfficeHead ? <Crown className="h-4 w-4 text-amber-600" /> : null}
+                          {employee.fullName || "-"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">{employee.designation?.name || "-"}</p>
+                      </div>
+                      <span className={employee.isOfficeHead ? "rounded-md bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800" : "rounded-md bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700"}>
+                        {employee.isOfficeHead ? "Head" : "Active"}
+                      </span>
+                    </div>
+                    {mobileDetailColumns.length ? (
+                      <div className="mt-4 grid gap-2 text-sm">
+                        {mobileDetailColumns.map((column) => (
+                          <div key={column.key} className="flex justify-between gap-3">
+                            <span className="text-muted-foreground">{column.label}</span>
+                            <span className="text-right font-semibold">{screenCellValue(row, column.key) || "-"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {showActions ? (
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        {canEditEmployees && row.section ? (
+                          <>
+                            <button type="button" className="btn-secondary px-3 py-2 text-xs" disabled={saving || row.sectionIndex === 1} onClick={() => moveRow(row.section, getId(employee), "up")}>
+                              <ArrowUp className="h-4 w-4" />
+                              Move Up
+                            </button>
+                            <button type="button" className="btn-secondary px-3 py-2 text-xs" disabled={saving || row.sectionIndex === row.section.rows.length} onClick={() => moveRow(row.section, getId(employee), "down")}>
+                              <ArrowDown className="h-4 w-4" />
+                              Move Down
+                            </button>
+                          </>
+                        ) : null}
+                        {canEditEmployees ? (
+                          <>
+                            <button type="button" className={employee.isOfficeHead ? "btn-secondary px-3 py-2 text-xs text-amber-700" : "btn-secondary px-3 py-2 text-xs"} disabled={saving} onClick={() => toggleOfficeHead(employee)}>
+                              <Star className={employee.isOfficeHead ? "h-4 w-4 fill-current" : "h-4 w-4"} />
+                              {employee.isOfficeHead ? "Unmark Head" : "Mark Head"}
+                            </button>
+                            <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => openEditForm(employee, "transfer")}>
+                              <Pencil className="h-4 w-4" />
+                              Edit/Transfer
+                            </button>
+                          </>
+                        ) : null}
+                        {canDeleteEmployees ? (
+                          <button type="button" className="btn-secondary col-span-2 px-3 py-2 text-xs text-danger" onClick={() => setDeleteTarget(employee)}>
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="rounded-xl border border-border bg-surface p-6 text-center text-sm text-muted-foreground">No records match the current filters.</div>
+            )}
+          </div>
+          </>
         )}
+        </section>
       </div>
 
       <div className="print-only">
@@ -1039,7 +1306,17 @@ const EmployeesPage = () => {
         </div>
       </div>
 
-      <Modal open={formOpen} title={editingEmployee ? "Edit Row" : "Add Row"} description="Section change works like a simple transfer." onClose={() => setFormOpen(false)} size="lg">
+      <Modal
+        open={formOpen}
+        title={formMode === "transfer" ? "Transfer Row" : editingEmployee ? "Edit Row" : "Add Row"}
+        description={
+          formMode === "transfer"
+            ? "Office / Section change karein for internal transfer, ya Incumbency Action se another department / retirement select karein."
+            : "Section change works like a simple transfer."
+        }
+        onClose={() => setFormOpen(false)}
+        size="lg"
+      >
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block">
             <span className="label-shell">Name</span>
@@ -1056,6 +1333,10 @@ const EmployeesPage = () => {
             placeholder="Search designation..."
             onChange={(value) => setForm((current) => ({ ...current, designationName: value }))}
           />
+          <label className="block">
+            <span className="label-shell">Service/Cadre</span>
+            <input className="input-shell" placeholder="Example: PAS, PMS, Secretariat, Technical..." value={form.serviceCadre} onChange={(event) => setForm((current) => ({ ...current, serviceCadre: event.target.value }))} />
+          </label>
           <SearchableSelect
             label="Office / Section"
             value={form.sectionName}

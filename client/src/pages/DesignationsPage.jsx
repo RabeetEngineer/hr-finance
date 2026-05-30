@@ -16,7 +16,7 @@ import { notifyResourceChanged } from "@/utils/resourceEvents";
 const emptyDesignation = {
   name: "",
   bps: "",
-  service: "",
+  totalStrength: 0,
   category: "official",
   sortOrder: 0,
   isActive: true,
@@ -127,7 +127,7 @@ const DesignationsPage = () => {
     return [
       { label: "Visible Designations", value: total },
       { label: "Active", value: designations.filter((designation) => designation.isActive !== false).length },
-      { label: "With Service", value: designations.filter((designation) => designation.service).length },
+      { label: "Total Strength", value: designations.reduce((sum, designation) => sum + Number(designation.totalStrength || 0), 0) },
       { label: "Inactive", value: designations.filter((designation) => designation.isActive === false).length },
     ];
   }, [designations]);
@@ -139,12 +139,12 @@ const DesignationsPage = () => {
       render: (row) => (
         <div>
           <p className="font-semibold text-foreground">{row.name}</p>
-          <p className="text-xs text-muted-foreground">{row.service || "Used in employee entry dropdown"}</p>
+          <p className="text-xs text-muted-foreground">Used in employee entry dropdown</p>
         </div>
       ),
     },
     { key: "bps", header: "BPS / Grade", render: (row) => row.bps || "-" },
-    { key: "service", header: "Service", render: (row) => row.service || "-" },
+    { key: "totalStrength", header: "Total Strength", render: (row) => row.totalStrength || 0 },
     { key: "status", header: "Status", render: (row) => <StatusBadge value={String(row.isActive)} /> },
     { key: "createdAt", header: "Created", render: (row) => formatDate(row.createdAt) },
   ];
@@ -171,17 +171,17 @@ const DesignationsPage = () => {
         }
       />
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-2 md:grid-cols-4">
         {metrics.map((metric) => (
-          <div key={metric.label} className="rounded-lg border border-border bg-surface px-4 py-3">
+          <div key={metric.label} className="rounded-lg border border-border bg-surface px-3 py-2 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{metric.label}</p>
-            <p className="mt-1 text-xl font-black">{loading ? "..." : metric.value}</p>
+            <p className="text-lg font-black">{loading ? "..." : metric.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="rounded-lg border border-border bg-surface p-3 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-[1fr_220px]">
+      <div className="rounded-lg border border-border bg-surface p-2 shadow-sm">
+        <div className="grid gap-2 md:grid-cols-[1fr_190px]">
           <SearchInput
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
@@ -204,7 +204,7 @@ const DesignationsPage = () => {
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-surface p-3 shadow-sm">
+      <div className="rounded-lg border border-border bg-surface p-2 shadow-sm">
         <DataTable
           loading={loading}
           data={designations}

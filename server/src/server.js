@@ -21,6 +21,7 @@ import leaveRoutes from "./routes/leaveRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import additionalChargeRoutes from "./routes/additionalChargeRoutes.js";
 import activityLogRoutes from "./routes/activityLogRoutes.js";
+import importRoutes from "./routes/importRoutes.js";
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -63,6 +64,7 @@ app.use("/api/v1/leaves", leaveRoutes);
 app.use("/api/v1/additional-charges", additionalChargeRoutes);
 app.use("/api/v1/activity-logs", activityLogRoutes);
 app.use("/api/v1/reports", reportRoutes);
+app.use("/api/v1/import", importRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

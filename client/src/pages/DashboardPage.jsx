@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, Printer, Search, Users, Building2, Tags } from "lucide-react";
 import { employeeService } from "@/services/employeeService";
+import { designationService } from "@/services/designationService";
 import { reportService } from "@/services/reportService";
 import { formatDate } from "@/utils/formatDate";
 import { getErrorMessage } from "@/utils/getErrorMessage";
@@ -8,22 +9,16 @@ import { subscribeResourceChanged } from "@/utils/resourceEvents";
 import { toast } from "sonner";
 
 const compactUnitName = (unit) => {
-  const name = unit?.code || unit?.name || unit?.path || "Unassigned";
-  return String(name)
-    .replace(/^O\/O\s+/i, "")
-    .replace(/\bAdditional\b/gi, "Addl.")
-    .replace(/\bDeputy\b/gi, "Dy.")
-    .replace(/\bSecretary\b/gi, "Secy")
-    .replace(/\bFinance\b/gi, "Fin.")
-    .replace(/\s+/g, " ");
+  const name = unit?.name || unit?.code || unit?.path || "Unassigned";
+  return String(name).replace(/\s+/g, " ").trim();
 };
 
 const fetchAllEmployees = async () => {
-  const first = await employeeService.list({ page: 1, limit: 200, sort: "sortOrder fullName", status: "active" });
+  const first = await employeeService.list({ page: 1, limit: 200, sort: "hierarchy", status: "active" });
   const rows = [...(first.data.data || [])];
   const pages = Number(first.data.meta?.pages || 1);
   for (let page = 2; page <= pages; page += 1) {
-    const response = await employeeService.list({ page, limit: 200, sort: "sortOrder fullName", status: "active" });
+    const response = await employeeService.list({ page, limit: 200, sort: "hierarchy", status: "active" });
     rows.push(...(response.data.data || []));
   }
   return rows;
@@ -57,15 +52,28 @@ const downloadCsv = (filename, header, rows) => {
 const DashboardPage = () => {
   const [dashboard, setDashboard] = useState(null);
   const [employees, setEmployees] = useState([]);
+  const [designations, setDesignations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summarySearch, setSummarySearch] = useState("");
+  const [showAllSummaryRows, setShowAllSummaryRows] = useState(false);
+  const [selectedSummaryDesignations, setSelectedSummaryDesignations] = useState(() => {
+    const saved = localStorage.getItem("hrf_summary_designations");
+    return saved ? JSON.parse(saved) : null;
+  });
 
   const load = async () => {
     setLoading(true);
     try {
-      const [dashboardResponse, employeeRows] = await Promise.all([reportService.dashboard(), fetchAllEmployees()]);
+      const [dashboardResponse, employeeRows, designationResponse] = await Promise.all([
+        reportService.dashboard(),
+        fetchAllEmployees(),
+        designationService.list({ limit: 200, isActive: "true", sort: "sortOrder name" }),
+      ]);
       setDashboard(dashboardResponse.data.data);
       setEmployees(employeeRows);
+      setDesignations(designationResponse.data.data || []);
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to load dashboard"));
     } finally {
@@ -83,19 +91,45 @@ const DashboardPage = () => {
 
   const counts = dashboard?.counts || {};
   const designationNames = useMemo(() => [...new Set(employees.map((employee) => employee.designation?.name).filter(Boolean))].sort(), [employees]);
+  const summaryDesignationNames = selectedSummaryDesignations === null ? designationNames : selectedSummaryDesignations.filter((name) => designationNames.includes(name));
+  const selectedDesignationMeta = useMemo(
+    () => new Map(designations.map((designation) => [designation.name, designation])),
+    [designations]
+  );
 
   const officeDesignationSummary = useMemo(() => {
     const map = new Map();
-    employees.forEach((employee) => {
+    employees.forEach((employee, index) => {
       const office = compactUnitName(employee.currentOfficeSection);
       const designation = employee.designation?.name || "Unspecified";
-      if (!map.has(office)) map.set(office, { office, total: 0, counts: {} });
+      if (!summaryDesignationNames.includes(designation)) return;
+      if (!map.has(office)) map.set(office, { office, total: 0, counts: {}, firstIndex: index });
       const group = map.get(office);
       group.total += 1;
       group.counts[designation] = (group.counts[designation] || 0) + 1;
     });
-    return [...map.values()].sort((a, b) => b.total - a.total || a.office.localeCompare(b.office));
-  }, [employees]);
+    return [...map.values()].sort((a, b) => a.firstIndex - b.firstIndex);
+  }, [employees, summaryDesignationNames]);
+  const visibleOfficeDesignationSummary = useMemo(() => {
+    const needle = summarySearch.trim().toLowerCase();
+    const rows = needle ? officeDesignationSummary.filter((row) => row.office.toLowerCase().includes(needle)) : officeDesignationSummary;
+    return showAllSummaryRows ? rows : rows.slice(0, 10);
+  }, [officeDesignationSummary, showAllSummaryRows, summarySearch]);
+
+  const designationStrengthSummary = useMemo(
+    () =>
+      summaryDesignationNames.map((name) => {
+        const filled = employees.filter((employee) => employee.designation?.name === name).length;
+        const totalStrength = Number(selectedDesignationMeta.get(name)?.totalStrength || 0);
+        return {
+          name,
+          filled,
+          totalStrength,
+          remaining: totalStrength ? Math.max(totalStrength - filled, 0) : null,
+        };
+      }),
+    [employees, selectedDesignationMeta, summaryDesignationNames]
+  );
 
   const upcomingRetirements = useMemo(
     () =>
@@ -123,8 +157,20 @@ const DashboardPage = () => {
   const summary = [
     { label: "Total Employees", value: counts.totalEmployees || employees.length, icon: Users, sub: "Active incumbency rows" },
     { label: "Offices / Sections", value: counts.totalOrganizationUnits || officeDesignationSummary.length, icon: Building2, sub: "Structure nodes" },
-    { label: "Designations", value: designationNames.length, icon: Tags, sub: "Used in active records" },
+    { label: "Designations", value: designationNames.length, icon: Tags, sub: `${summaryDesignationNames.length} selected for summary` },
   ];
+
+  const saveSummarySelection = () => {
+    localStorage.setItem("hrf_summary_designations", JSON.stringify(summaryDesignationNames));
+    toast.success("Summary selection locked");
+  };
+
+  const toggleSummaryDesignation = (name) => {
+    setSelectedSummaryDesignations((current) => {
+      const base = current === null ? designationNames : current;
+      return base.includes(name) ? base.filter((item) => item !== name) : [...base, name];
+    });
+  };
 
   const exportDashboardData = () => {
     downloadCsv(
@@ -188,48 +234,116 @@ const DashboardPage = () => {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="text-base font-black">Office / Section Designation Summary</h3>
-            <p className="text-xs text-muted-foreground">Each office shows count by designation, for example Assistants, Junior Clerks, Drivers, and so on.</p>
+            <p className="text-xs text-muted-foreground">Compact summary. Search office/section or open full list only when needed.</p>
           </div>
-          <button
-            type="button"
-            className="btn-secondary px-3 py-2 text-xs"
-            onClick={() =>
-              downloadCsv(
-                "office-designation-summary.csv",
-                ["Office / Section", "Total", ...designationNames],
-                officeDesignationSummary.map((row) => [row.office, row.total, ...designationNames.map((designation) => row.counts[designation] || 0)])
-              )
-            }
-          >
-            <Download className="h-4 w-4" />
-            Export Summary
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => setSummaryOpen((value) => !value)}>
+              {summaryDesignationNames.length ? `${summaryDesignationNames.length} designations selected` : "No designations selected"}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary px-3 py-2 text-xs"
+              onClick={() =>
+                downloadCsv(
+                  "office-designation-summary.csv",
+                  ["Office / Section", "Total", ...summaryDesignationNames],
+                  officeDesignationSummary.map((row) => [row.office, row.total, ...summaryDesignationNames.map((designation) => row.counts[designation] || 0)])
+                )
+              }
+            >
+              <Download className="h-4 w-4" />
+              Export Summary
+            </button>
+          </div>
+        </div>
+        <div className="mb-3 grid gap-2 lg:grid-cols-[minmax(260px,1fr)_auto]">
+          <label className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <input className="w-full bg-transparent outline-none" value={summarySearch} onChange={(event) => setSummarySearch(event.target.value)} placeholder="Search office / section summary..." />
+          </label>
+          <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => setShowAllSummaryRows((value) => !value)}>
+            {showAllSummaryRows ? "Show first 10" : `Show all ${officeDesignationSummary.length}`}
           </button>
         </div>
-        <div className="overflow-auto">
-          <table className="incumbency-table w-full min-w-[980px] border-collapse text-xs">
+        {summaryOpen ? (
+          <div className="mb-3 rounded-lg border border-border bg-surface-2 p-3">
+            <div className="mb-2 flex flex-wrap gap-2">
+              <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => setSelectedSummaryDesignations(designationNames)}>
+                Select all
+              </button>
+              <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => setSelectedSummaryDesignations([])}>
+                Unselect all
+              </button>
+              <button type="button" className="btn-primary px-3 py-2 text-xs" onClick={saveSummarySelection}>
+                Lock default
+              </button>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {designationNames.map((name) => (
+                <label key={name} className="flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm">
+                  <input type="checkbox" checked={summaryDesignationNames.includes(name)} onChange={() => toggleSummaryDesignation(name)} />
+                  <span className="truncate">{name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {designationStrengthSummary.slice(0, 8).map((row) => (
+            <div key={row.name} className="rounded-lg border border-border bg-surface-2 p-3">
+              <p className="truncate text-sm font-black text-foreground">{row.name}</p>
+              <div className="mt-3 flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-muted-foreground">Filled</p>
+                  <p className="text-2xl font-black">{row.filled}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-muted-foreground">Total Strength</p>
+                  <p className="text-lg font-black text-primary">{row.totalStrength || "Open"}</p>
+                </div>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+                <div
+                  className="h-full rounded-full bg-primary"
+                  style={{ width: `${row.totalStrength ? Math.min((row.filled / row.totalStrength) * 100, 100) : 100}%` }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {row.remaining === null ? "No strength limit set" : `${row.remaining} remaining`}
+              </p>
+            </div>
+          ))}
+        </div>
+        <div className="max-h-[520px] overflow-auto rounded-lg border border-border bg-white shadow-inner">
+          <table className="incumbency-table summary-matrix w-full min-w-[980px] border-separate border-spacing-0 text-xs">
             <thead>
               <tr>
                 <th>Office / Section</th>
                 <th>Total</th>
-                {designationNames.map((designation) => (
+                {summaryDesignationNames.map((designation) => (
                   <th key={designation}>{designation}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {officeDesignationSummary.length ? (
-                officeDesignationSummary.map((row) => (
+                  visibleOfficeDesignationSummary.map((row) => (
                   <tr key={row.office}>
                     <td className="font-bold">{row.office}</td>
                     <td className="font-bold">{row.total}</td>
-                    {designationNames.map((designation) => (
-                      <td key={designation}>{row.counts[designation] || "-"}</td>
+                    {summaryDesignationNames.map((designation) => (
+                      <td key={designation}>
+                        {row.counts[designation] || "-"}
+                        {selectedDesignationMeta.get(designation)?.totalStrength ? (
+                          <span className="ml-1 text-muted-foreground">/ {selectedDesignationMeta.get(designation).totalStrength}</span>
+                        ) : null}
+                      </td>
                     ))}
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={designationNames.length + 2} className="py-6 text-center text-muted-foreground">
+                  <td colSpan={summaryDesignationNames.length + 2} className="py-6 text-center text-muted-foreground">
                     No office / designation data available.
                   </td>
                 </tr>
@@ -237,6 +351,11 @@ const DashboardPage = () => {
             </tbody>
           </table>
         </div>
+        {!showAllSummaryRows && officeDesignationSummary.length > visibleOfficeDesignationSummary.length ? (
+            <p className="mt-2 text-xs font-semibold text-muted-foreground">
+              Showing first {visibleOfficeDesignationSummary.length} in hierarchy order out of {officeDesignationSummary.length}. Use Show all for complete summary.
+            </p>
+        ) : null}
       </section>
 
       <section className="rounded-lg border border-border bg-surface p-4 shadow-sm">
@@ -284,48 +403,6 @@ const DashboardPage = () => {
         </div>
       </section>
 
-      <section className="rounded-lg border border-border bg-surface p-3 shadow-sm">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1">
-          <div>
-            <h3 className="text-base font-black">Recent Employee Records</h3>
-            <p className="text-xs text-muted-foreground">Dashboard preview only. Full data stays in Incumbency Sheet.</p>
-          </div>
-        </div>
-        <div className="overflow-auto">
-          <table className="incumbency-table w-full min-w-[820px] border-collapse text-xs">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Personnel No.</th>
-                <th>Designation</th>
-                <th>Office / Section</th>
-                <th>Cell</th>
-                <th>Joining</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredEmployees.length ? (
-                filteredEmployees.map((employee) => (
-                  <tr key={employee.id}>
-                    <td className="font-bold">{employee.fullName}</td>
-                    <td>{employee.personnelNumber || "-"}</td>
-                    <td>{employee.designation?.name || "-"}</td>
-                    <td>{compactUnitName(employee.currentOfficeSection)}</td>
-                    <td>{employee.mobileNumber || "-"}</td>
-                    <td>{formatDate(employee.dateOfJoiningCurrentDepartment || employee.dateOfJoiningGovernmentService)}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} className="py-6 text-center text-muted-foreground">
-                    No records match the dashboard search.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </div>
   );
 };

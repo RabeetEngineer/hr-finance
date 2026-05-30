@@ -10,5 +10,5 @@ export const employeeService = {
   update: crud.update,
   remove: crud.remove,
   updateStatus: (id, payload) => api.patch(`/employees/${id}/status`, payload),
+  sectionCounts: (params) => api.get("/employees/section-counts", { params }),
 };
-

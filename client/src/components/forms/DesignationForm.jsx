@@ -6,7 +6,7 @@ import { z } from "zod";
 const schema = z.object({
   name: z.string().min(2, "Designation name is required"),
   bps: z.string().optional(),
-  service: z.string().optional(),
+  totalStrength: z.coerce.number().min(0).optional(),
   category: z.enum(["officer", "official", "support_staff"]),
   sortOrder: z.coerce.number().optional(),
   isActive: z.coerce.boolean().default(true),
@@ -23,7 +23,7 @@ const DesignationForm = ({ defaultValues, onSubmit, submitLabel = "Save Designat
     defaultValues: defaultValues || {
       name: "",
       bps: "",
-      service: "",
+      totalStrength: 0,
       category: "official",
       sortOrder: 0,
       isActive: true,
@@ -47,8 +47,8 @@ const DesignationForm = ({ defaultValues, onSubmit, submitLabel = "Save Designat
           <input className="input-shell" {...register("bps")} placeholder="BPS-17" />
         </div>
         <div>
-          <label className="label-shell">Service</label>
-          <input className="input-shell" {...register("service")} placeholder="PMS, Secretariat, Technical..." />
+        <label className="label-shell">Total Strength</label>
+        <input className="input-shell" type="number" min="0" {...register("totalStrength")} placeholder="Example: 50" />
         </div>
       </div>
       <input type="hidden" {...register("sortOrder")} value={defaultValues?.sortOrder || 0} />

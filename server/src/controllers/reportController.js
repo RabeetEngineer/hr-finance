@@ -9,7 +9,7 @@ import { apiResponse } from "../utils/apiResponse.js";
 import { getUnitId, getUnitParentId } from "../utils/organizationUnit.js";
 
 const baseEmployeePopulate = [
-  { path: "designation", select: "name bps service category" },
+  { path: "designation", select: "name bps category" },
   { path: "currentWing", select: "name code" },
   { path: "currentOfficeSection", select: "name code type path level sortOrder" },
   { path: "currentSeat", select: "seatTitle seatCode seatStatus" },
@@ -124,7 +124,7 @@ export const dashboardReport = asyncHandler(async (_req, res) => {
       { $group: { _id: "$designation", count: { $sum: 1 } } },
       { $lookup: { from: "designations", localField: "_id", foreignField: "_id", as: "designation" } },
       { $unwind: { path: "$designation", preserveNullAndEmptyArrays: true } },
-      { $project: { _id: 1, count: 1, name: "$designation.name", service: "$designation.service" } },
+      { $project: { _id: 1, count: 1, name: "$designation.name" } },
       { $sort: { count: -1 } },
       { $limit: 10 },
     ]),
@@ -178,7 +178,7 @@ export const incumbencyReport = asyncHandler(async (req, res) => {
 export const vacantSeatsReport = asyncHandler(async (req, res) => {
   const query = await buildSeatQuery(req.query.organizationUnit || req.query.officeSection || req.query.section, req.query.includeChildren !== "false");
   const seats = await Seat.find(query)
-    .populate("designation", "name bps service category")
+    .populate("designation", "name bps category")
     .populate("wing", "name code")
     .populate("officeSection", "name code type path level sortOrder")
     .populate("additionalChargeHolder", "fullName personnelNumber")

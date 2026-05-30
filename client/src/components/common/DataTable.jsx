@@ -11,7 +11,7 @@ const DataTable = ({
   actions,
 }) => {
   return (
-    <div className="overflow-hidden rounded-3xl border border-border bg-surface shadow-soft">
+    <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-border">
           <thead className="bg-surface-2/80">
@@ -19,12 +19,12 @@ const DataTable = ({
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className={cn("px-5 py-4 text-left text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground", column.headerClassName)}
+                  className={cn("px-3 py-2.5 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-700", column.headerClassName)}
                 >
                   {column.header}
                 </th>
               ))}
-              {actions ? <th className="px-5 py-4 text-right text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Actions</th> : null}
+              {actions ? <th className="px-3 py-2.5 text-right text-xs font-black uppercase tracking-[0.12em] text-slate-700">Actions</th> : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -32,12 +32,12 @@ const DataTable = ({
               Array.from({ length: 5 }).map((_, index) => (
                 <tr key={index} className="animate-pulse">
                   {columns.map((column) => (
-                    <td key={column.key} className="px-5 py-4">
+                    <td key={column.key} className="px-3 py-2.5">
                       <div className="h-4 rounded-full bg-muted" />
                     </td>
                   ))}
                   {actions ? (
-                    <td className="px-5 py-4">
+                    <td className="px-3 py-2.5">
                       <div className="ml-auto h-4 w-24 rounded-full bg-muted" />
                     </td>
                   ) : null}
@@ -51,11 +51,11 @@ const DataTable = ({
                   onClick={() => onRowClick?.(row)}
                 >
                   {columns.map((column) => (
-                    <td key={column.key} className="px-5 py-4 align-top text-sm text-foreground">
+                    <td key={column.key} className="px-3 py-2.5 align-top text-sm text-foreground">
                       {column.render ? column.render(row, rowIndex) : row[column.key] ?? "-"}
                     </td>
                   ))}
-                  {actions ? <td className="px-5 py-4 align-top">{actions(row)}</td> : null}
+                  {actions ? <td className="px-3 py-2.5 align-top">{actions(row)}</td> : null}
                 </tr>
               ))
             ) : (
@@ -76,4 +76,3 @@ const DataTable = ({
 };
 
 export default DataTable;
-

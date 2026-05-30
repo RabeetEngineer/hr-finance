@@ -4,7 +4,7 @@ const designationSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, unique: true },
     bps: { type: String, trim: true },
-    service: { type: String, trim: true },
+    totalStrength: { type: Number, default: 0, min: 0 },
     category: {
       type: String,
       enum: ["officer", "official", "support_staff"],
@@ -18,6 +18,6 @@ const designationSchema = new mongoose.Schema(
   { timestamps: true, versionKey: false }
 );
 
-designationSchema.index({ name: 1, bps: 1, service: 1, category: 1 });
+designationSchema.index({ name: 1, bps: 1, category: 1 });
 
 export default mongoose.model("Designation", designationSchema);

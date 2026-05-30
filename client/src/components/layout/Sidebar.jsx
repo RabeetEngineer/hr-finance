@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   GitBranch,
+  Import,
   LayoutDashboard,
   LogOut,
   Settings,
@@ -20,6 +21,7 @@ const navigation = [
   { to: "/employees", label: "Incumbency Sheet", icon: Users },
   { to: "/structure", label: "Offices / Sections", icon: GitBranch },
   { to: "/designations", label: "Designations", icon: Tags, roles: ["super_admin", "admin"] },
+  { to: "/import", label: "Import Data", icon: Import, roles: ["super_admin", "admin"] },
   { to: "/old-employees", label: "Old Employees", icon: UserX },
   { to: "/users-roles", label: "Users & Roles", icon: ShieldCheck, roles: ["super_admin"] },
   { to: "/settings", label: "Settings", icon: Settings, roles: ["super_admin", "admin"] },

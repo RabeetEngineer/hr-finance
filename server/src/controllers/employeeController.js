@@ -5,6 +5,8 @@ import TransferRecord from "../models/TransferRecord.js";
 import LeaveRecord from "../models/LeaveRecord.js";
 import AdditionalCharge from "../models/AdditionalCharge.js";
 import PostingHistory from "../models/PostingHistory.js";
+import Designation from "../models/Designation.js";
+import OrganizationUnit from "../models/OrganizationUnit.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { apiResponse } from "../utils/apiResponse.js";
 import AppError from "../utils/AppError.js";
@@ -20,6 +22,8 @@ const shape = (employee) => ({
   personnelNumber: employee.personnelNumber,
   designation: employee.designation,
   bps: employee.bps,
+  serviceCadre: employee.serviceCadre,
+  isOfficeHead: employee.isOfficeHead,
   gender: employee.gender,
   sortOrder: employee.sortOrder,
   dateOfBirth: employee.dateOfBirth,
@@ -51,14 +55,22 @@ const shape = (employee) => ({
   updatedAt: employee.updatedAt,
 });
 
+const toObjectIds = (values) =>
+  String(values || "")
+    .split(",")
+    .filter((value) => mongoose.Types.ObjectId.isValid(value))
+    .map((value) => new mongoose.Types.ObjectId(value));
+
 const buildQuery = (queryParams) => {
   const query = {};
 
   if (queryParams.q) {
     query.$or = [
       { fullName: regexSearch(queryParams.q) },
+      { fatherName: regexSearch(queryParams.q) },
       { cnic: regexSearch(queryParams.q) },
       { personnelNumber: regexSearch(queryParams.q) },
+      { serviceCadre: regexSearch(queryParams.q) },
       { mobileNumber: regexSearch(queryParams.q) },
       { whatsappNumber: regexSearch(queryParams.q) },
       { email: regexSearch(queryParams.q) },
@@ -67,7 +79,13 @@ const buildQuery = (queryParams) => {
 
   if (queryParams.wing) query.currentWing = queryParams.wing;
   if (queryParams.section) query.currentOfficeSection = queryParams.section;
+  if (queryParams.sectionIds) {
+    query.currentOfficeSection = { $in: toObjectIds(queryParams.sectionIds) };
+  }
   if (queryParams.designation) query.designation = queryParams.designation;
+  if (queryParams.designationIds) {
+    query.designation = { $in: toObjectIds(queryParams.designationIds) };
+  }
   if (queryParams.status) query.employmentStatus = queryParams.status;
   if (queryParams.gender) query.gender = queryParams.gender;
   if (queryParams.district) query.district = regexSearch(queryParams.district);
@@ -85,6 +103,36 @@ const buildQuery = (queryParams) => {
   }
 
   return query;
+};
+
+const buildOrganizationRankMap = async () => {
+  const units = await OrganizationUnit.find({ isActive: true })
+    .select("_id name code parent parentOfficeSection sortOrder")
+    .lean();
+  const byId = new Map(units.map((unit) => [String(unit._id), { ...unit, children: [] }]));
+  const roots = [];
+
+  byId.forEach((unit) => {
+    const parentId = String(unit.parent || unit.parentOfficeSection || "");
+    const parent = parentId ? byId.get(parentId) : null;
+    if (parent) parent.children.push(unit);
+    else roots.push(unit);
+  });
+
+  const sortUnits = (items) =>
+    items.sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || String(a.code || a.name || "").localeCompare(String(b.code || b.name || "")));
+
+  const ranks = new Map();
+  let rank = 0;
+  const visit = (items) => {
+    sortUnits(items).forEach((unit) => {
+      rank += 1;
+      ranks.set(String(unit._id), rank);
+      visit(unit.children || []);
+    });
+  };
+  visit(roots);
+  return ranks;
 };
 
 const detachEmployeeFromSeat = async (employee, session) => {
@@ -136,19 +184,66 @@ const attachEmployeeToSeat = async (employee, seatId, session) => {
   return seat;
 };
 
+const assertDesignationCapacity = async ({ designationId, employeeId = null, session = null }) => {
+  if (!designationId) return;
+  const designation = await Designation.findById(designationId).session(session);
+  if (!designation || !Number(designation.totalStrength || 0)) return;
+
+  const query = {
+    designation: designationId,
+    employmentStatus: "active",
+    isArchived: { $ne: true },
+  };
+  if (employeeId) query._id = { $ne: employeeId };
+
+  const currentCount = await Employee.countDocuments(query).session(session);
+  if (currentCount >= Number(designation.totalStrength)) {
+    throw new AppError(`${designation.name} strength limit reached (${designation.totalStrength})`, 409);
+  }
+};
+
 export const listEmployees = asyncHandler(async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query);
   const query = buildQuery(req.query);
 
-  const paginated = await Employee.find(query)
-    .populate("designation", "name bps service category")
+  if (req.query.q) {
+    const [matchingDesignations, matchingSections] = await Promise.all([
+      Designation.find({ name: regexSearch(req.query.q), isActive: { $ne: false } }).select("_id").lean(),
+      OrganizationUnit.find({
+        isActive: { $ne: false },
+        $or: [{ name: regexSearch(req.query.q) }, { code: regexSearch(req.query.q) }, { path: regexSearch(req.query.q) }],
+      }).select("_id").lean(),
+    ]);
+    const designationIds = matchingDesignations.map((designation) => designation._id);
+    const sectionIds = matchingSections.map((section) => section._id);
+    if (designationIds.length) query.$or.push({ designation: { $in: designationIds } });
+    if (sectionIds.length) query.$or.push({ currentOfficeSection: { $in: sectionIds } });
+  }
+
+  const employeeQuery = Employee.find(query)
+    .populate("designation", "name bps category")
     .populate("currentWing", "name code")
     .populate("currentOfficeSection", "name code type path level sortOrder")
-    .populate("currentSeat", "seatTitle seatCode seatStatus")
-    .sort(parseSort(req.query.sort, "fullName"))
-    .skip(skip)
-    .limit(limit);
-  const total = await Employee.countDocuments(query);
+    .populate("currentSeat", "seatTitle seatCode seatStatus");
+
+  let paginated = [];
+  let total = 0;
+
+  if (req.query.sort === "hierarchy") {
+    const [rows, ranks] = await Promise.all([employeeQuery, buildOrganizationRankMap()]);
+    const sortedRows = rows.sort((a, b) => {
+      const firstRank = ranks.get(String(a.currentOfficeSection?._id || a.currentOfficeSection || "")) || 999999;
+      const secondRank = ranks.get(String(b.currentOfficeSection?._id || b.currentOfficeSection || "")) || 999999;
+      return firstRank - secondRank || Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || String(a.fullName || "").localeCompare(String(b.fullName || ""));
+    });
+    total = sortedRows.length;
+    paginated = sortedRows.slice(skip, skip + limit);
+  } else {
+    [paginated, total] = await Promise.all([
+      employeeQuery.sort(parseSort(req.query.sort, "fullName")).skip(skip).limit(limit),
+      Employee.countDocuments(query),
+    ]);
+  }
 
   return apiResponse(res, 200, "Employees fetched", paginated.map(shape), {
     page,
@@ -156,6 +251,36 @@ export const listEmployees = asyncHandler(async (req, res) => {
     total,
     pages: Math.ceil(total / limit) || 1,
   });
+});
+
+export const getEmployeeSectionCounts = asyncHandler(async (req, res) => {
+  const query = buildQuery({ ...req.query, section: undefined, sectionIds: undefined });
+
+  if (req.query.q) {
+    const [matchingDesignations, matchingSections] = await Promise.all([
+      Designation.find({ name: regexSearch(req.query.q), isActive: { $ne: false } }).select("_id").lean(),
+      OrganizationUnit.find({
+        isActive: { $ne: false },
+        $or: [{ name: regexSearch(req.query.q) }, { code: regexSearch(req.query.q) }, { path: regexSearch(req.query.q) }],
+      }).select("_id").lean(),
+    ]);
+    const designationIds = matchingDesignations.map((designation) => designation._id);
+    const sectionIds = matchingSections.map((section) => section._id);
+    if (designationIds.length) query.$or.push({ designation: { $in: designationIds } });
+    if (sectionIds.length) query.$or.push({ currentOfficeSection: { $in: sectionIds } });
+  }
+
+  const rows = await Employee.aggregate([
+    { $match: query },
+    { $group: { _id: "$currentOfficeSection", count: { $sum: 1 } } },
+  ]);
+
+  return apiResponse(
+    res,
+    200,
+    "Employee section counts fetched",
+    rows.map((row) => ({ sectionId: row._id, count: row.count }))
+  );
 });
 
 export const createEmployee = asyncHandler(async (req, res) => {
@@ -169,6 +294,10 @@ export const createEmployee = asyncHandler(async (req, res) => {
       createdBy: req.user?._id,
       updatedBy: req.user?._id,
     };
+
+    if ((payload.employmentStatus || "active") === "active") {
+      await assertDesignationCapacity({ designationId: payload.designation, session });
+    }
 
     const employee = await Employee.create([payload], { session });
     const created = employee[0];
@@ -213,7 +342,7 @@ export const createEmployee = asyncHandler(async (req, res) => {
 
 export const getEmployeeById = asyncHandler(async (req, res) => {
   const employee = await Employee.findById(req.params.id)
-    .populate("designation", "name bps service category")
+    .populate("designation", "name bps category")
     .populate("currentWing", "name code")
     .populate("currentOfficeSection", "name code type path level sortOrder")
     .populate("currentSeat", "seatTitle seatCode seatStatus currentEmployee additionalChargeHolder");
@@ -280,6 +409,10 @@ export const updateEmployee = asyncHandler(async (req, res) => {
       if (["transferred", "retired", "deceased", "resigned"].includes(employmentStatus)) {
         await detachEmployeeFromSeat(employee, session);
       }
+    }
+
+    if (employee.employmentStatus === "active") {
+      await assertDesignationCapacity({ designationId: employee.designation, employeeId: employee._id, session });
     }
 
     if (employee.currentSeat) {

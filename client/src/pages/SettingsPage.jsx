@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
 
 const defaultSettings = {
-  fontFamily: "manrope",
+  fontFamily: "inter",
   fontSize: 14,
   tableFontSize: 12,
   printFontSize: 12,
@@ -14,7 +14,25 @@ const defaultSettings = {
   accentColor: "142 68% 29%",
   printTitle: "Incumbency Position",
   printSubtitle: "Punjab Finance Department",
+  screenColumns: ["total", "sectionSerial", "name", "fatherName", "designation", "serviceCadre", "personnelNumber", "joining"],
+  printColumns: ["total", "name", "designation", "section"],
 };
+
+const columnOptions = [
+  { key: "total", label: "Total Sr #" },
+  { key: "sectionSerial", label: "Sr.#" },
+  { key: "name", label: "Name" },
+  { key: "fatherName", label: "Father Name" },
+  { key: "designation", label: "Designation" },
+  { key: "serviceCadre", label: "Service/Cadre" },
+  { key: "section", label: "Section" },
+  { key: "personnelNumber", label: "Personnel No." },
+  { key: "cnic", label: "CNIC" },
+  { key: "mobileNumber", label: "Cell No." },
+  { key: "dateOfBirth", label: "DOB" },
+  { key: "joining", label: "Joining" },
+  { key: "gender", label: "Gender" },
+];
 
 const colorPresets = [
   { label: "Punjab Green", value: "151 69% 19%" },
@@ -34,12 +52,21 @@ const SettingsPage = () => {
   const [settings, setSettings] = useState(defaultSettings);
 
   useEffect(() => {
-    setSettings({ ...defaultSettings, ...JSON.parse(localStorage.getItem("hrf_ui_settings") || "{}") });
+    setSettings({ ...defaultSettings, ...JSON.parse(localStorage.getItem("hrf_ui_settings") || "{}"), fontFamily: "inter" });
   }, []);
 
   const update = (key, value) =>
     setSettings((current) => {
       const next = { ...current, [key]: value };
+      applySettings(next);
+      return next;
+    });
+
+  const toggleColumn = (key, value) =>
+    setSettings((current) => {
+      const values = current[key] || [];
+      const nextValues = values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+      const next = { ...current, [key]: nextValues.length ? nextValues : defaultSettings[key] };
       applySettings(next);
       return next;
     });
@@ -81,9 +108,7 @@ const SettingsPage = () => {
             <label className="block">
               <span className="label-shell">Font Style</span>
               <select className="input-shell" value={settings.fontFamily} onChange={(event) => update("fontFamily", event.target.value)}>
-                <option value="manrope">Modern Sans</option>
-                <option value="system">System / Office</option>
-                <option value="serif">Formal Serif</option>
+                <option value="inter">Modern Sans (Uniform)</option>
               </select>
             </label>
             <label className="block">
@@ -159,7 +184,7 @@ const SettingsPage = () => {
         <div
           className="mt-4 rounded-lg border border-border bg-surface-2 p-4"
           style={{
-            fontFamily: settings.fontFamily === "serif" ? "Georgia, serif" : settings.fontFamily === "system" ? "Arial, sans-serif" : "Manrope, sans-serif",
+            fontFamily: settings.fontFamily === "serif" ? "Georgia, serif" : settings.fontFamily === "system" ? "Arial, sans-serif" : "Inter, sans-serif",
             fontSize: `${settings.fontSize}px`,
           }}
         >
@@ -178,6 +203,46 @@ const SettingsPage = () => {
               </tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-border bg-surface p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-lg font-bold">Default Columns</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Select columns once and save; Incumbency Sheet will open with these screen and print defaults.</p>
+          </div>
+          <button type="button" className="btn-primary px-3 py-2 text-xs" onClick={save}>
+            <Save className="h-4 w-4" />
+            Lock Defaults
+          </button>
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          {[
+            { key: "screenColumns", title: "Screen Columns" },
+            { key: "printColumns", title: "Print Columns" },
+          ].map((group) => (
+            <div key={group.key} className="rounded-lg border border-border bg-surface-2 p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h4 className="font-black">{group.title}</h4>
+                <span className="rounded-md bg-white px-2 py-1 text-xs font-bold text-muted-foreground">
+                  {(settings[group.key] || []).length} selected
+                </span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {columnOptions.map((column) => (
+                  <label key={`${group.key}-${column.key}`} className="flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={(settings[group.key] || []).includes(column.key)}
+                      onChange={() => toggleColumn(group.key, column.key)}
+                    />
+                    <span>{column.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
     </div>

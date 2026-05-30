@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createEmployee,
   deleteEmployee,
+  getEmployeeSectionCounts,
   getEmployeeById,
   listEmployees,
   updateEmployee,
@@ -12,10 +13,12 @@ import { authorizeRoles } from "../middleware/roleMiddleware.js";
 
 const router = Router();
 
+router.route("/").get(listEmployees);
+router.route("/section-counts").get(getEmployeeSectionCounts);
+
 router.use(protect);
-router.route("/").get(listEmployees).post(authorizeRoles("super_admin", "admin", "data_entry"), createEmployee);
+router.route("/").post(authorizeRoles("super_admin", "admin", "data_entry"), createEmployee);
 router.route("/:id").get(getEmployeeById).put(authorizeRoles("super_admin", "admin", "data_entry"), updateEmployee).delete(authorizeRoles("super_admin", "admin"), deleteEmployee);
 router.patch("/:id/status", authorizeRoles("super_admin", "admin"), updateEmployeeStatus);
 
 export default router;
-

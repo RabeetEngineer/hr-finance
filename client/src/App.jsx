@@ -9,6 +9,7 @@ import StructurePage from "@/pages/StructurePage";
 import DesignationsPage from "@/pages/DesignationsPage";
 import SettingsPage from "@/pages/SettingsPage";
 import UsersRolesPage from "@/pages/UsersRolesPage";
+import ImportIncumbencyPage from "@/pages/ImportIncumbencyPage";
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
@@ -34,6 +35,8 @@ const App = () => {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/public/incumbency" element={<EmployeesPage publicMode />} />
+      <Route path="/incumbency-public" element={<EmployeesPage publicMode />} />
       <Route
         element={
           <ProtectedRoute>
@@ -49,6 +52,8 @@ const App = () => {
         <Route path="/oldemployees" element={<OldEmployeesPage />} />
         <Route path="/structure" element={<StructurePage />} />
         <Route path="/designations" element={<DesignationsPage />} />
+        <Route path="/import" element={<ImportIncumbencyPage />} />
+        <Route path="/import-incumbency" element={<ImportIncumbencyPage />} />
         <Route path="/employees/new" element={<Navigate to="/employees" replace />} />
         <Route path="/employees/:id" element={<Navigate to="/employees" replace />} />
         <Route path="/employees/:id/edit" element={<Navigate to="/employees" replace />} />
