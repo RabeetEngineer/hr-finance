@@ -34,11 +34,11 @@ const editFormFromEmployee = (employee) => ({
 });
 
 const fetchAll = async (status) => {
-  const first = await employeeService.list({ page: 1, limit: 200, status, sort: "-updatedAt" });
+  const first = await employeeService.list({ page: 1, limit: 800, status, sort: "-updatedAt" });
   const rows = [...(first.data.data || [])];
   const pages = Number(first.data.meta?.pages || 1);
   for (let page = 2; page <= pages; page += 1) {
-    const response = await employeeService.list({ page, limit: 200, status, sort: "-updatedAt" });
+    const response = await employeeService.list({ page, limit: 800, status, sort: "-updatedAt" });
     rows.push(...(response.data.data || []));
   }
   return rows;

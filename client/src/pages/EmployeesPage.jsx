@@ -109,12 +109,31 @@ const parentHint = (unit, sectionsById) => {
 };
 
 const fetchAll = async (service, params = {}) => {
-  const first = await service.list({ ...params, page: 1, limit: 200 });
+  const pageLimit = params.limit || 800;
+  const first = await service.list({ ...params, page: 1, limit: pageLimit });
   const rows = [...(first.data.data || [])];
   const pages = Number(first.data.meta?.pages || 1);
 
   for (let page = 2; page <= pages; page += 1) {
-    const response = await service.list({ ...params, page, limit: 200 });
+    const response = await service.list({ ...params, page, limit: pageLimit });
+    rows.push(...(response.data.data || []));
+  }
+
+  return rows;
+};
+
+const fetchEmployeePage = async (params = {}) => {
+  const response = await employeeService.list({ ...params, page: params.page || 1, limit: params.limit || 800 });
+  return response.data.data || [];
+};
+
+const fetchEmployeesForExport = async (params = {}) => {
+  const first = await employeeService.list({ ...params, page: 1, limit: 800 });
+  const rows = [...(first.data.data || [])];
+  const pages = Number(first.data.meta?.pages || 1);
+
+  for (let page = 2; page <= pages; page += 1) {
+    const response = await employeeService.list({ ...params, page, limit: 800 });
     rows.push(...(response.data.data || []));
   }
 
@@ -814,7 +833,7 @@ const EmployeesPage = ({ publicMode = false }) => {
 
   const moveRow = async (section, employeeId, direction) => {
     const rows = section?.id
-      ? await fetchAll(employeeService, { section: section.id, sort: "sortOrder fullName", status: "active" })
+      ? await fetchEmployeePage({ section: section.id, sort: "sortOrder fullName", status: "active", limit: 800 })
       : section.rows || [];
     const rowIndex = rows.findIndex((employee) => String(getId(employee)) === String(employeeId));
     const targetIndex = direction === "up" ? rowIndex - 1 : rowIndex + 1;
@@ -918,7 +937,7 @@ const EmployeesPage = ({ publicMode = false }) => {
     csvRows.push(visibleScreenColumns.map((column) => column.label));
 
     try {
-      const rows = await fetchAll(employeeService, employeeQueryParams({ page: 1, limit: 200 }));
+      const rows = await fetchEmployeesForExport(employeeQueryParams({ page: undefined, limit: undefined }));
       rows.forEach((employee, index) => {
         csvRows.push(visibleScreenColumns.map((column) => screenCellValue({ type: "employee", employee, globalIndex: index + 1, sectionIndex: "" }, column.key) || ""));
       });

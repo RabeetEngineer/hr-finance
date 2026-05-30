@@ -41,7 +41,8 @@ export const listActivityLogs = asyncHandler(async (req, res) => {
       .populate("actorUser", "fullName email role")
       .sort(parseSort(req.query.sort, "-createdAt"))
       .skip(skip)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     ActivityLog.countDocuments(query),
   ]);
 

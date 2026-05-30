@@ -61,6 +61,11 @@ const toObjectIds = (values) =>
     .filter((value) => mongoose.Types.ObjectId.isValid(value))
     .map((value) => new mongoose.Types.ObjectId(value));
 
+const toObjectId = (value) => (mongoose.Types.ObjectId.isValid(value) ? new mongoose.Types.ObjectId(value) : value);
+
+const employeeListSelect =
+  "fullName fatherName cnic personnelNumber designation bps serviceCadre isOfficeHead gender sortOrder dateOfBirth dateOfJoiningGovernmentService dateOfJoiningCurrentDepartment dateOfJoiningCurrentPost transferredOutDate transferredToDepartment retirementDate currentOfficeSection currentWing currentSeat district domicile mobileNumber whatsappNumber email address qualification employeeType staffCategory employmentStatus profilePhoto remarks attachments isArchived archivedAt createdAt updatedAt";
+
 const buildQuery = (queryParams) => {
   const query = {};
 
@@ -134,6 +139,74 @@ const buildOrganizationRankMap = async () => {
   visit(roots);
   return ranks;
 };
+
+const buildOrganizationOrderIds = async () => {
+  const ranks = await buildOrganizationRankMap();
+  return [...ranks.entries()]
+    .sort((a, b) => a[1] - b[1])
+    .map(([id]) => new mongoose.Types.ObjectId(id));
+};
+
+const castEmployeeAggregateQuery = (query) => {
+  const next = { ...query };
+  ["currentWing", "currentOfficeSection", "designation"].forEach((field) => {
+    if (!next[field]) return;
+    if (typeof next[field] === "string") {
+      next[field] = toObjectId(next[field]);
+    } else if (next[field].$in) {
+      next[field] = { ...next[field], $in: next[field].$in.map(toObjectId) };
+    }
+  });
+
+  if (Array.isArray(next.$or)) {
+    next.$or = next.$or.map((condition) => castEmployeeAggregateQuery(condition));
+  }
+
+  return next;
+};
+
+const employeeLookupStages = [
+  {
+    $lookup: {
+      from: "designations",
+      localField: "designation",
+      foreignField: "_id",
+      as: "designation",
+      pipeline: [{ $project: { name: 1, bps: 1, category: 1 } }],
+    },
+  },
+  { $unwind: { path: "$designation", preserveNullAndEmptyArrays: true } },
+  {
+    $lookup: {
+      from: "wings",
+      localField: "currentWing",
+      foreignField: "_id",
+      as: "currentWing",
+      pipeline: [{ $project: { name: 1, code: 1 } }],
+    },
+  },
+  { $unwind: { path: "$currentWing", preserveNullAndEmptyArrays: true } },
+  {
+    $lookup: {
+      from: "officesections",
+      localField: "currentOfficeSection",
+      foreignField: "_id",
+      as: "currentOfficeSection",
+      pipeline: [{ $project: { name: 1, code: 1, type: 1, path: 1, level: 1, sortOrder: 1 } }],
+    },
+  },
+  { $unwind: { path: "$currentOfficeSection", preserveNullAndEmptyArrays: true } },
+  {
+    $lookup: {
+      from: "seats",
+      localField: "currentSeat",
+      foreignField: "_id",
+      as: "currentSeat",
+      pipeline: [{ $project: { seatTitle: 1, seatCode: 1, seatStatus: 1 } }],
+    },
+  },
+  { $unwind: { path: "$currentSeat", preserveNullAndEmptyArrays: true } },
+];
 
 const detachEmployeeFromSeat = async (employee, session) => {
   if (!employee.currentSeat) return null;
@@ -221,23 +294,46 @@ export const listEmployees = asyncHandler(async (req, res) => {
   }
 
   const employeeQuery = Employee.find(query)
+    .select(employeeListSelect)
     .populate("designation", "name bps category")
     .populate("currentWing", "name code")
     .populate("currentOfficeSection", "name code type path level sortOrder")
-    .populate("currentSeat", "seatTitle seatCode seatStatus");
+    .populate("currentSeat", "seatTitle seatCode seatStatus")
+    .lean();
 
   let paginated = [];
   let total = 0;
 
   if (req.query.sort === "hierarchy") {
-    const [rows, ranks] = await Promise.all([employeeQuery, buildOrganizationRankMap()]);
-    const sortedRows = rows.sort((a, b) => {
-      const firstRank = ranks.get(String(a.currentOfficeSection?._id || a.currentOfficeSection || "")) || 999999;
-      const secondRank = ranks.get(String(b.currentOfficeSection?._id || b.currentOfficeSection || "")) || 999999;
-      return firstRank - secondRank || Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || String(a.fullName || "").localeCompare(String(b.fullName || ""));
-    });
-    total = sortedRows.length;
-    paginated = sortedRows.slice(skip, skip + limit);
+    const orderedUnitIds = await buildOrganizationOrderIds();
+    const aggregateQuery = castEmployeeAggregateQuery(query);
+    const [result] = await Employee.aggregate([
+      { $match: aggregateQuery },
+      {
+        $addFields: {
+          hierarchyRank: {
+            $let: {
+              vars: { rank: { $indexOfArray: [orderedUnitIds, "$currentOfficeSection"] } },
+              in: { $cond: [{ $gte: ["$$rank", 0] }, "$$rank", 999999] },
+            },
+          },
+        },
+      },
+      { $sort: { hierarchyRank: 1, sortOrder: 1, fullName: 1 } },
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: limit },
+            ...employeeLookupStages,
+            { $project: { hierarchyRank: 0 } },
+          ],
+          meta: [{ $count: "total" }],
+        },
+      },
+    ]);
+    paginated = result?.data || [];
+    total = result?.meta?.[0]?.total || 0;
   } else {
     [paginated, total] = await Promise.all([
       employeeQuery.sort(parseSort(req.query.sort, "fullName")).skip(skip).limit(limit),
@@ -271,7 +367,7 @@ export const getEmployeeSectionCounts = asyncHandler(async (req, res) => {
   }
 
   const rows = await Employee.aggregate([
-    { $match: query },
+    { $match: castEmployeeAggregateQuery(query) },
     { $group: { _id: "$currentOfficeSection", count: { $sum: 1 } } },
   ]);
 
@@ -345,7 +441,8 @@ export const getEmployeeById = asyncHandler(async (req, res) => {
     .populate("designation", "name bps category")
     .populate("currentWing", "name code")
     .populate("currentOfficeSection", "name code type path level sortOrder")
-    .populate("currentSeat", "seatTitle seatCode seatStatus currentEmployee additionalChargeHolder");
+    .populate("currentSeat", "seatTitle seatCode seatStatus currentEmployee additionalChargeHolder")
+    .lean();
 
   if (!employee) throw new AppError("Employee not found", 404);
 
@@ -357,7 +454,8 @@ export const getEmployeeById = asyncHandler(async (req, res) => {
       .populate("toWing", "name code")
       .populate("toOfficeSection", "name code type path level sortOrder")
       .populate("toSeat", "seatTitle seatCode")
-      .sort({ effectiveDate: -1 }),
+      .sort({ effectiveDate: -1 })
+      .lean(),
     TransferRecord.find({ employee: employee._id })
       .populate("fromWing", "name code")
       .populate("fromOfficeSection", "name code type path level sortOrder")
@@ -365,11 +463,13 @@ export const getEmployeeById = asyncHandler(async (req, res) => {
       .populate("toWing", "name code")
       .populate("toOfficeSection", "name code type path level sortOrder")
       .populate("toSeat", "seatTitle seatCode")
-      .sort({ transferDate: -1 }),
-    LeaveRecord.find({ employee: employee._id }).populate("approvedBy", "fullName email role").sort({ startDate: -1 }),
+      .sort({ transferDate: -1 })
+      .lean(),
+    LeaveRecord.find({ employee: employee._id }).populate("approvedBy", "fullName email role").sort({ startDate: -1 }).lean(),
     AdditionalCharge.find({ additionalChargeHolder: employee._id })
       .populate("vacantSeat", "seatTitle seatCode seatStatus")
-      .sort({ startDate: -1 }),
+      .sort({ startDate: -1 })
+      .lean(),
   ]);
 
   return apiResponse(res, 200, "Employee fetched", {

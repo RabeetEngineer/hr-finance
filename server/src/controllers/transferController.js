@@ -48,7 +48,8 @@ export const listTransfers = asyncHandler(async (req, res) => {
       .populate("toSeat", "seatTitle seatCode")
       .sort(parseSort(req.query.sort, "-transferDate"))
       .skip(skip)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     TransferRecord.countDocuments(query),
   ]);
 
@@ -168,7 +169,8 @@ export const getTransferById = asyncHandler(async (req, res) => {
     .populate("fromSeat", "seatTitle seatCode")
     .populate("toWing", "name code")
     .populate("toOfficeSection", "name code type path level sortOrder")
-    .populate("toSeat", "seatTitle seatCode");
+    .populate("toSeat", "seatTitle seatCode")
+    .lean();
 
   if (!record) throw new AppError("Transfer record not found", 404);
   return apiResponse(res, 200, "Transfer record fetched", shape(record));

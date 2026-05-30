@@ -35,7 +35,8 @@ export const listAdditionalCharges = asyncHandler(async (req, res) => {
       .populate("additionalChargeHolder", "fullName personnelNumber cnic employmentStatus")
       .sort(parseSort(req.query.sort, "-startDate"))
       .skip(skip)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     AdditionalCharge.countDocuments(query),
   ]);
 
@@ -146,7 +147,8 @@ export const endAdditionalCharge = asyncHandler(async (req, res) => {
 export const getAdditionalChargeById = asyncHandler(async (req, res) => {
   const record = await AdditionalCharge.findById(req.params.id)
     .populate("vacantSeat", "seatTitle seatCode seatStatus")
-    .populate("additionalChargeHolder", "fullName personnelNumber cnic employmentStatus");
+    .populate("additionalChargeHolder", "fullName personnelNumber cnic employmentStatus")
+    .lean();
   if (!record) throw new AppError("Additional charge record not found", 404);
   return apiResponse(res, 200, "Additional charge fetched", shape(record));
 });

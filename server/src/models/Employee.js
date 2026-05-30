@@ -77,5 +77,12 @@ employeeSchema.index({
   email: "text",
   district: "text",
 });
+employeeSchema.index({ employmentStatus: 1, isArchived: 1 });
+employeeSchema.index({ currentOfficeSection: 1, employmentStatus: 1, isArchived: 1, sortOrder: 1, fullName: 1 });
+employeeSchema.index({ designation: 1, employmentStatus: 1, isArchived: 1 });
+employeeSchema.index({ sortOrder: 1, fullName: 1 });
+employeeSchema.index({ fullName: 1 });
+employeeSchema.index({ mobileNumber: 1 });
+employeeSchema.index({ dateOfBirth: 1, isArchived: 1 });
 
 export default mongoose.model("Employee", employeeSchema);

@@ -28,7 +28,12 @@ export const listDesignations = asyncHandler(async (req, res) => {
   if (isActive !== undefined) query.isActive = isActive;
 
   const [designations, total] = await Promise.all([
-    Designation.find(query).sort(parseSort(req.query.sort, "sortOrder name")).skip(skip).limit(limit),
+    Designation.find(query)
+      .select("name bps totalStrength category sortOrder isActive createdAt updatedAt")
+      .sort(parseSort(req.query.sort, "sortOrder name"))
+      .skip(skip)
+      .limit(limit)
+      .lean(),
     Designation.countDocuments(query),
   ]);
 
@@ -59,7 +64,7 @@ export const createDesignation = asyncHandler(async (req, res) => {
 });
 
 export const getDesignationById = asyncHandler(async (req, res) => {
-  const designation = await Designation.findById(req.params.id);
+  const designation = await Designation.findById(req.params.id).lean();
   if (!designation) throw new AppError("Designation not found", 404);
   return apiResponse(res, 200, "Designation fetched", shape(designation));
 });

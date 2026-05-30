@@ -33,6 +33,10 @@ const organizationUnitSchema = new mongoose.Schema(
 );
 
 organizationUnitSchema.index({ name: 1, code: 1, type: 1, parent: 1 });
+organizationUnitSchema.index({ isActive: 1, sortOrder: 1, name: 1 });
+organizationUnitSchema.index({ isActive: 1, parent: 1, sortOrder: 1, name: 1 });
+organizationUnitSchema.index({ isActive: 1, parentOfficeSection: 1, sortOrder: 1, name: 1 });
+organizationUnitSchema.index({ isActive: 1, path: 1 });
 
 organizationUnitSchema.pre("save", function syncCompatibilityFields(next) {
   if (this.parent && !this.parentOfficeSection) {

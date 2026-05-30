@@ -36,7 +36,8 @@ const seatQuery = (query = {}) =>
     .populate("officeSection", "name code type path level sortOrder")
     .populate("wing", "name code")
     .populate("currentEmployee", "fullName personnelNumber cnic employmentStatus")
-    .populate("additionalChargeHolder", "fullName personnelNumber cnic employmentStatus");
+    .populate("additionalChargeHolder", "fullName personnelNumber cnic employmentStatus")
+    .lean();
 
 export const listSeats = asyncHandler(async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query);
@@ -71,7 +72,8 @@ export const listVacantSeats = asyncHandler(async (req, res) => {
     .populate("officeSection", "name code type path level sortOrder")
     .populate("wing", "name code")
     .populate("additionalChargeHolder", "fullName personnelNumber cnic employmentStatus")
-    .sort("seatTitle");
+    .sort("seatTitle")
+    .lean();
 
   return apiResponse(res, 200, "Vacant seats fetched", seats.map(shape));
 });
@@ -115,7 +117,8 @@ export const getSeatById = asyncHandler(async (req, res) => {
     .populate("officeSection", "name code type path level sortOrder")
     .populate("wing", "name code")
     .populate("currentEmployee", "fullName personnelNumber cnic employmentStatus")
-    .populate("additionalChargeHolder", "fullName personnelNumber cnic employmentStatus");
+    .populate("additionalChargeHolder", "fullName personnelNumber cnic employmentStatus")
+    .lean();
   if (!seat) throw new AppError("Seat not found", 404);
   return apiResponse(res, 200, "Seat fetched", shape(seat));
 });

@@ -27,7 +27,7 @@ export const listWings = asyncHandler(async (req, res) => {
   if (isActive !== undefined) query.isActive = isActive;
 
   const [wings, total] = await Promise.all([
-    Wing.find(query).sort(parseSort(req.query.sort, "sortOrder name")).skip(skip).limit(limit),
+    Wing.find(query).sort(parseSort(req.query.sort, "sortOrder name")).skip(skip).limit(limit).lean(),
     Wing.countDocuments(query),
   ]);
 
@@ -58,7 +58,7 @@ export const createWing = asyncHandler(async (req, res) => {
 });
 
 export const getWingById = asyncHandler(async (req, res) => {
-  const wing = await Wing.findById(req.params.id);
+  const wing = await Wing.findById(req.params.id).lean();
   if (!wing) throw new AppError("Wing not found", 404);
   return apiResponse(res, 200, "Wing fetched", shape(wing));
 });

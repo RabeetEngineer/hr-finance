@@ -19,7 +19,7 @@ const resolveUnitScopeIds = async (unitId, includeChildren = true) => {
   const resolvedId = getUnitId(unitId);
   if (!resolvedId) return [];
 
-  const units = await OrganizationUnit.find({}, "_id parent parentOfficeSection");
+  const units = await OrganizationUnit.find({}, "_id parent parentOfficeSection").lean();
   const byParent = new Map();
 
   units.forEach((unit) => {
@@ -73,91 +73,117 @@ const buildEmployeeIdsInScope = async (unitId, includeChildren = true) => {
 
 export const dashboardReport = asyncHandler(async (_req, res) => {
   const [
-    totalEmployees,
-    totalOfficers,
-    totalOfficials,
-    totalOrganizationUnits,
-    topLevelUnits,
-    totalSeats,
-    occupiedSeats,
-    vacantSeats,
+    employeeStats,
+    organizationStats,
+    seatStats,
     additionalChargeCases,
-    onLeaveCount,
-    recentTransfers,
-    upcomingRetirements,
-    genderCounts,
-    designationCounts,
-    unitCounts,
   ] = await Promise.all([
-    Employee.countDocuments({ isArchived: { $ne: true }, employmentStatus: "active" }),
-    Employee.countDocuments({ isArchived: { $ne: true }, employmentStatus: "active", employeeType: "officer" }),
-    Employee.countDocuments({ isArchived: { $ne: true }, employmentStatus: "active", employeeType: "official" }),
-    OrganizationUnit.countDocuments({ isActive: true }),
-    OrganizationUnit.countDocuments({ isActive: true, $or: [{ parent: null }, { parentOfficeSection: null }] }),
-    Seat.countDocuments({ isActive: true }),
-    Seat.countDocuments({ isActive: true, seatStatus: "occupied" }),
-    Seat.countDocuments({ isActive: true, seatStatus: "vacant" }),
+    Employee.aggregate([
+      { $match: { isArchived: { $ne: true } } },
+      {
+        $facet: {
+          counts: [
+            {
+              $group: {
+                _id: null,
+                totalEmployees: { $sum: { $cond: [{ $eq: ["$employmentStatus", "active"] }, 1, 0] } },
+                totalOfficers: {
+                  $sum: { $cond: [{ $and: [{ $eq: ["$employmentStatus", "active"] }, { $eq: ["$employeeType", "officer"] }] }, 1, 0] },
+                },
+                totalOfficials: {
+                  $sum: { $cond: [{ $and: [{ $eq: ["$employmentStatus", "active"] }, { $eq: ["$employeeType", "official"] }] }, 1, 0] },
+                },
+                onLeaveCount: { $sum: { $cond: [{ $eq: ["$employmentStatus", "on_leave"] }, 1, 0] } },
+              },
+            },
+          ],
+          upcomingRetirements: [
+            { $match: { dateOfBirth: { $exists: true, $ne: null } } },
+            { $sort: { dateOfBirth: 1 } },
+            { $limit: 10 },
+            { $project: { fullName: 1, personnelNumber: 1, dateOfBirth: 1, employmentStatus: 1 } },
+          ],
+          designationCounts: [
+            { $match: { employmentStatus: "active" } },
+            { $group: { _id: "$designation", count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $limit: 10 },
+            { $lookup: { from: "designations", localField: "_id", foreignField: "_id", as: "designation" } },
+            { $unwind: { path: "$designation", preserveNullAndEmptyArrays: true } },
+            { $project: { _id: 1, count: 1, name: "$designation.name" } },
+          ],
+          unitCounts: [
+            { $match: { employmentStatus: "active" } },
+            { $group: { _id: "$currentOfficeSection", count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $limit: 12 },
+            { $lookup: { from: "officesections", localField: "_id", foreignField: "_id", as: "unit" } },
+            { $unwind: { path: "$unit", preserveNullAndEmptyArrays: true } },
+            { $project: { _id: 1, count: 1, name: "$unit.name", code: "$unit.code", type: "$unit.type", path: "$unit.path" } },
+          ],
+        },
+      },
+    ]),
+    OrganizationUnit.aggregate([
+      { $match: { isActive: true } },
+      {
+        $group: {
+          _id: null,
+          totalOrganizationUnits: { $sum: 1 },
+          topLevelUnits: {
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $eq: ["$parent", null] },
+                    { $not: ["$parent"] },
+                    { $eq: ["$parentOfficeSection", null] },
+                    { $not: ["$parentOfficeSection"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]),
+    Seat.aggregate([
+      { $match: { isActive: true } },
+      {
+        $group: {
+          _id: null,
+          totalSeats: { $sum: 1 },
+          occupiedSeats: { $sum: { $cond: [{ $eq: ["$seatStatus", "occupied"] }, 1, 0] } },
+          vacantSeats: { $sum: { $cond: [{ $eq: ["$seatStatus", "vacant"] }, 1, 0] } },
+        },
+      },
+    ]),
     AdditionalCharge.countDocuments({ isActive: true }),
-    Employee.countDocuments({ employmentStatus: "on_leave", isArchived: { $ne: true } }),
-    TransferRecord.find()
-      .populate("employee", "fullName personnelNumber")
-      .populate("fromWing", "name code")
-      .populate("fromOfficeSection", "name code type path level sortOrder")
-      .populate("toWing", "name code")
-      .populate("toOfficeSection", "name code type path level sortOrder")
-      .sort("-transferDate")
-      .limit(5),
-    Employee.find({
-      dateOfBirth: { $exists: true, $ne: null },
-      isArchived: { $ne: true },
-    })
-      .sort({ dateOfBirth: 1 })
-      .limit(10)
-      .select("fullName personnelNumber dateOfBirth employmentStatus"),
-    Employee.aggregate([
-      { $match: { isArchived: { $ne: true }, employmentStatus: "active" } },
-      { $group: { _id: "$gender", count: { $sum: 1 } } },
-      { $sort: { _id: 1 } },
-    ]),
-    Employee.aggregate([
-      { $match: { isArchived: { $ne: true }, employmentStatus: "active" } },
-      { $group: { _id: "$designation", count: { $sum: 1 } } },
-      { $lookup: { from: "designations", localField: "_id", foreignField: "_id", as: "designation" } },
-      { $unwind: { path: "$designation", preserveNullAndEmptyArrays: true } },
-      { $project: { _id: 1, count: 1, name: "$designation.name" } },
-      { $sort: { count: -1 } },
-      { $limit: 10 },
-    ]),
-    Employee.aggregate([
-      { $match: { isArchived: { $ne: true }, employmentStatus: "active" } },
-      { $group: { _id: "$currentOfficeSection", count: { $sum: 1 } } },
-      { $lookup: { from: "officesections", localField: "_id", foreignField: "_id", as: "unit" } },
-      { $unwind: { path: "$unit", preserveNullAndEmptyArrays: true } },
-      { $project: { _id: 1, count: 1, name: "$unit.name", code: "$unit.code", type: "$unit.type", path: "$unit.path" } },
-      { $sort: { count: -1 } },
-      { $limit: 12 },
-    ]),
   ]);
+  const employeeData = employeeStats?.[0] || {};
+  const employeeCounts = employeeData.counts?.[0] || {};
+  const organizationCounts = organizationStats?.[0] || {};
+  const seatCounts = seatStats?.[0] || {};
 
   return apiResponse(res, 200, "Dashboard data fetched", {
     counts: {
-      totalEmployees,
-      totalOfficers,
-      totalOfficials,
-      totalOrganizationUnits,
-      topLevelUnits,
-      totalSeats,
-      occupiedSeats,
-      vacantSeats,
+      totalEmployees: employeeCounts.totalEmployees || 0,
+      totalOfficers: employeeCounts.totalOfficers || 0,
+      totalOfficials: employeeCounts.totalOfficials || 0,
+      totalOrganizationUnits: organizationCounts.totalOrganizationUnits || 0,
+      topLevelUnits: organizationCounts.topLevelUnits || 0,
+      totalSeats: seatCounts.totalSeats || 0,
+      occupiedSeats: seatCounts.occupiedSeats || 0,
+      vacantSeats: seatCounts.vacantSeats || 0,
       additionalChargeCases,
-      onLeaveCount,
+      onLeaveCount: employeeCounts.onLeaveCount || 0,
     },
-    recentTransfers,
-    upcomingRetirements,
+    upcomingRetirements: employeeData.upcomingRetirements || [],
     charts: {
-      genderCounts,
-      designationCounts,
-      unitCounts,
+      designationCounts: employeeData.designationCounts || [],
+      unitCounts: employeeData.unitCounts || [],
     },
   });
 });
@@ -170,7 +196,8 @@ export const incumbencyReport = asyncHandler(async (req, res) => {
 
   const employees = await Employee.find(query)
     .populate(baseEmployeePopulate)
-    .sort({ fullName: 1 });
+    .sort({ fullName: 1 })
+    .lean();
 
   return apiResponse(res, 200, "Incumbency report fetched", employees);
 });
@@ -182,7 +209,8 @@ export const vacantSeatsReport = asyncHandler(async (req, res) => {
     .populate("wing", "name code")
     .populate("officeSection", "name code type path level sortOrder")
     .populate("additionalChargeHolder", "fullName personnelNumber")
-    .sort({ officeSection: 1, seatTitle: 1 });
+    .sort({ officeSection: 1, seatTitle: 1 })
+    .lean();
 
   return apiResponse(res, 200, "Vacant seats report fetched", seats);
 });
@@ -200,7 +228,8 @@ export const additionalChargeReport = asyncHandler(async (req, res) => {
   const records = await AdditionalCharge.find(recordsQuery)
     .populate("vacantSeat", "seatTitle seatCode seatStatus officeSection")
     .populate("additionalChargeHolder", "fullName personnelNumber cnic employmentStatus")
-    .sort({ startDate: -1 });
+    .sort({ startDate: -1 })
+    .lean();
   return apiResponse(res, 200, "Additional charge report fetched", records);
 });
 
@@ -224,7 +253,8 @@ export const transferHistoryReport = asyncHandler(async (req, res) => {
     .populate("toWing", "name code")
     .populate("toOfficeSection", "name code type path level sortOrder")
     .populate("toSeat", "seatTitle seatCode")
-    .sort({ transferDate: -1 });
+    .sort({ transferDate: -1 })
+    .lean();
   return apiResponse(res, 200, "Transfer report fetched", records);
 });
 
@@ -240,7 +270,8 @@ export const leaveReport = asyncHandler(async (req, res) => {
   const records = await LeaveRecord.find(query)
     .populate("employee", "fullName personnelNumber cnic employmentStatus")
     .populate("approvedBy", "fullName email role")
-    .sort({ startDate: -1 });
+    .sort({ startDate: -1 })
+    .lean();
   return apiResponse(res, 200, "Leave report fetched", records);
 });
 
@@ -261,7 +292,8 @@ export const retirementDueReport = asyncHandler(async (req, res) => {
 
   const employees = await Employee.find(query)
     .select("fullName personnelNumber dateOfBirth employmentStatus currentOfficeSection")
-    .sort({ dateOfBirth: 1 });
+    .sort({ dateOfBirth: 1 })
+    .lean();
 
   const mapped = employees.filter((employee) => {
     if (!employee.dateOfBirth) return false;

@@ -112,7 +112,7 @@ const getSiblingMaxSortOrder = async (parentId, excludeId = null, session = null
   }
   if (excludeId) query._id = { $ne: excludeId };
 
-  const sibling = OrganizationUnit.find(query).sort({ sortOrder: -1, displayOrder: -1, name: 1 }).limit(1);
+  const sibling = OrganizationUnit.find(query).sort({ sortOrder: -1, displayOrder: -1, name: 1 }).limit(1).lean();
   if (session) sibling.session(session);
   const result = await sibling;
   return result[0] ? getUnitSortOrder(result[0]) : -1;
@@ -153,7 +153,7 @@ const syncBranchHierarchy = async (unitDoc, session = null) => {
 };
 
 const collectDescendantIds = async (rootId, session = null) => {
-  const query = OrganizationUnit.find({}, "_id parent parentOfficeSection");
+  const query = OrganizationUnit.find({}, "_id parent parentOfficeSection").lean();
   if (session) query.session(session);
   const units = await query;
   const byParent = new Map();
@@ -199,13 +199,20 @@ const validateParentChoice = async (unitId, parentId, session = null) => {
 };
 
 const shapeUnit = (unit) => normalizeUnitShape(unit);
+const unitListSelect =
+  "name code type parent parentOfficeSection ancestors level path sortOrder displayOrder headDesignation description wing isActive createdAt updatedAt";
 
 export const listOrganizationUnits = asyncHandler(async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query);
   const query = unitScopeQuery(req.query);
 
   const [units, total] = await Promise.all([
-    OrganizationUnit.find(query).sort(parseSort(req.query.sort, "sortOrder name")).skip(skip).limit(limit),
+    OrganizationUnit.find(query)
+      .select(unitListSelect)
+      .sort(parseSort(req.query.sort, "sortOrder name"))
+      .skip(skip)
+      .limit(limit)
+      .lean(),
     OrganizationUnit.countDocuments(query),
   ]);
 
@@ -220,7 +227,10 @@ export const listOrganizationUnits = asyncHandler(async (req, res) => {
 export const listOrganizationUnitTree = asyncHandler(async (req, res) => {
   const query = unitScopeQuery(req.query);
   delete query.$or;
-  const units = await OrganizationUnit.find(query).sort(parseSort(req.query.sort, "sortOrder name"));
+  const units = await OrganizationUnit.find(query)
+    .select(unitListSelect)
+    .sort(parseSort(req.query.sort, "sortOrder name"))
+    .lean();
   const { employeeMap, seatMap } = await getDirectCounts();
   const tree = buildFlatTree(units, employeeMap, seatMap);
 
@@ -230,7 +240,8 @@ export const listOrganizationUnitTree = asyncHandler(async (req, res) => {
 export const getOrganizationUnitById = asyncHandler(async (req, res) => {
   const unit = await OrganizationUnit.findById(req.params.id)
     .populate("parent", "name code type path")
-    .populate("parentOfficeSection", "name code type path");
+    .populate("parentOfficeSection", "name code type path")
+    .lean();
 
   if (!unit) throw new AppError("Organization unit not found", 404);
   return apiResponse(res, 200, "Organization unit fetched", shapeUnit(unit));

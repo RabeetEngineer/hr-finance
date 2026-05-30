@@ -35,7 +35,8 @@ export const listLeaves = asyncHandler(async (req, res) => {
       .populate("approvedBy", "fullName email role")
       .sort(parseSort(req.query.sort, "-startDate"))
       .skip(skip)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     LeaveRecord.countDocuments(query),
   ]);
 
@@ -99,7 +100,8 @@ export const createLeave = asyncHandler(async (req, res) => {
 export const getLeaveById = asyncHandler(async (req, res) => {
   const leave = await LeaveRecord.findById(req.params.id)
     .populate("employee", "fullName personnelNumber cnic employmentStatus")
-    .populate("approvedBy", "fullName email role");
+    .populate("approvedBy", "fullName email role")
+    .lean();
   if (!leave) throw new AppError("Leave record not found", 404);
   return apiResponse(res, 200, "Leave record fetched", shape(leave));
 });

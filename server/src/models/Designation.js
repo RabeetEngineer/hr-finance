@@ -19,5 +19,7 @@ const designationSchema = new mongoose.Schema(
 );
 
 designationSchema.index({ name: 1, bps: 1, category: 1 });
+designationSchema.index({ isActive: 1, sortOrder: 1, name: 1 });
+designationSchema.index({ category: 1, isActive: 1, sortOrder: 1, name: 1 });
 
 export default mongoose.model("Designation", designationSchema);

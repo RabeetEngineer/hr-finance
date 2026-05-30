@@ -12,7 +12,7 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  if (isAuthenticated) return <Navigate to="/employees" replace />;
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -20,7 +20,7 @@ const LoginPage = () => {
     try {
       await login(form);
       toast.success("Signed in successfully");
-      navigate("/dashboard");
+      navigate("/employees");
     } catch (error) {
       toast.error(getErrorMessage(error, "Unable to sign in"));
     } finally {

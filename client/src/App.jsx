@@ -44,7 +44,7 @@ const App = () => {
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Navigate to="/employees" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/employees" element={<EmployeesPage />} />
         <Route path="/old-employees" element={<OldEmployeesPage />} />
@@ -69,7 +69,7 @@ const App = () => {
         <Route path="/users-roles" element={<UsersRolesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/employees" replace />} />
     </Routes>
   );
 };

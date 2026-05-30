@@ -32,7 +32,7 @@ export const listUsers = asyncHandler(async (req, res) => {
   if (isActive !== undefined) query.isActive = isActive;
 
   const [users, total] = await Promise.all([
-    User.find(query).sort(parseSort(req.query.sort, "-createdAt")).skip(skip).limit(limit),
+    User.find(query).sort(parseSort(req.query.sort, "-createdAt")).skip(skip).limit(limit).lean(),
     User.countDocuments(query),
   ]);
 
