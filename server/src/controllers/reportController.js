@@ -72,6 +72,14 @@ const buildEmployeeIdsInScope = async (unitId, includeChildren = true) => {
 };
 
 export const dashboardReport = asyncHandler(async (_req, res) => {
+  const today = new Date();
+  const retirementWindowEnd = new Date();
+  retirementWindowEnd.setMonth(retirementWindowEnd.getMonth() + 12);
+  const retirementDobStart = new Date(today);
+  retirementDobStart.setFullYear(retirementDobStart.getFullYear() - 60);
+  const retirementDobEnd = new Date(retirementWindowEnd);
+  retirementDobEnd.setFullYear(retirementDobEnd.getFullYear() - 60);
+
   const [
     employeeStats,
     organizationStats,
@@ -98,7 +106,12 @@ export const dashboardReport = asyncHandler(async (_req, res) => {
             },
           ],
           upcomingRetirements: [
-            { $match: { dateOfBirth: { $exists: true, $ne: null } } },
+            {
+              $match: {
+                employmentStatus: "active",
+                dateOfBirth: { $gte: retirementDobStart, $lte: retirementDobEnd },
+              },
+            },
             { $sort: { dateOfBirth: 1 } },
             { $limit: 10 },
             { $project: { fullName: 1, personnelNumber: 1, dateOfBirth: 1, employmentStatus: 1 } },

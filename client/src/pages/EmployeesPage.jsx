@@ -72,11 +72,17 @@ const printColumnOptions = [
 
 const defaultPrintColumns = ["total", "name", "designation", "section"];
 const screenColumnOptions = printColumnOptions;
-const defaultScreenColumns = ["total", "sectionSerial", "name", "fatherName", "designation", "personnelNumber", "joining", "status"];
+const defaultScreenColumns = ["sectionSerial", "name", "designation", "status"];
+const columnDefaultsVersion = 2;
 
 const savedColumnSetting = (key, fallback) => {
   try {
     const saved = JSON.parse(localStorage.getItem("hrf_ui_settings") || "{}");
+    if (key === "screenColumns" && Number(saved.columnDefaultsVersion || 0) < columnDefaultsVersion) {
+      const next = { ...saved, screenColumns: fallback, columnDefaultsVersion };
+      localStorage.setItem("hrf_ui_settings", JSON.stringify(next));
+      return fallback;
+    }
     return Array.isArray(saved[key]) && saved[key].length ? saved[key] : fallback;
   } catch {
     return fallback;

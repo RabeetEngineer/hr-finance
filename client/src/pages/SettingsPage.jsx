@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
 
 const defaultSettings = {
+  columnDefaultsVersion: 2,
   fontFamily: "inter",
   fontSize: 14,
   tableFontSize: 12,
@@ -14,7 +15,7 @@ const defaultSettings = {
   accentColor: "142 68% 29%",
   printTitle: "Incumbency Position",
   printSubtitle: "Punjab Finance Department",
-  screenColumns: ["total", "sectionSerial", "name", "fatherName", "designation", "serviceCadre", "personnelNumber", "joining"],
+  screenColumns: ["sectionSerial", "name", "designation", "status"],
   printColumns: ["total", "name", "designation", "section"],
 };
 
@@ -32,6 +33,7 @@ const columnOptions = [
   { key: "dateOfBirth", label: "DOB" },
   { key: "joining", label: "Joining" },
   { key: "gender", label: "Gender" },
+  { key: "status", label: "Status" },
 ];
 
 const colorPresets = [
@@ -52,7 +54,13 @@ const SettingsPage = () => {
   const [settings, setSettings] = useState(defaultSettings);
 
   useEffect(() => {
-    setSettings({ ...defaultSettings, ...JSON.parse(localStorage.getItem("hrf_ui_settings") || "{}"), fontFamily: "inter" });
+    const saved = JSON.parse(localStorage.getItem("hrf_ui_settings") || "{}");
+    const migrated =
+      Number(saved.columnDefaultsVersion || 0) < defaultSettings.columnDefaultsVersion
+        ? { ...saved, screenColumns: defaultSettings.screenColumns, columnDefaultsVersion: defaultSettings.columnDefaultsVersion }
+        : saved;
+    if (migrated !== saved) applySettings({ ...defaultSettings, ...migrated, fontFamily: "inter" });
+    setSettings({ ...defaultSettings, ...migrated, fontFamily: "inter" });
   }, []);
 
   const update = (key, value) =>
