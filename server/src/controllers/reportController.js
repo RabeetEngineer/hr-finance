@@ -7,6 +7,7 @@ import AdditionalCharge from "../models/AdditionalCharge.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { apiResponse } from "../utils/apiResponse.js";
 import { getUnitId, getUnitParentId } from "../utils/organizationUnit.js";
+import { buildIncumbencyCalculations } from "../utils/incumbencyCalculations.js";
 
 const baseEmployeePopulate = [
   { path: "designation", select: "name bps category" },
@@ -85,6 +86,8 @@ export const dashboardReport = asyncHandler(async (_req, res) => {
     organizationStats,
     seatStats,
     additionalChargeCases,
+    allEmployees,
+    activeUnits,
   ] = await Promise.all([
     Employee.aggregate([
       { $match: { isArchived: { $ne: true } } },
@@ -174,18 +177,32 @@ export const dashboardReport = asyncHandler(async (_req, res) => {
       },
     ]),
     AdditionalCharge.countDocuments({ isActive: true }),
+    Employee.find({ isArchived: { $ne: true } })
+      .populate("designation", "name bps category")
+      .populate("currentOfficeSection", "name code type path level sortOrder")
+      .select("fullName employmentStatus employeeType designation currentOfficeSection")
+      .lean(),
+    OrganizationUnit.find({ isActive: true }).select("name code type path level sortOrder parent parentOfficeSection").lean(),
   ]);
   const employeeData = employeeStats?.[0] || {};
   const employeeCounts = employeeData.counts?.[0] || {};
   const organizationCounts = organizationStats?.[0] || {};
   const seatCounts = seatStats?.[0] || {};
+  const incumbency = buildIncumbencyCalculations({ employees: allEmployees, units: activeUnits });
 
   return apiResponse(res, 200, "Dashboard data fetched", {
     counts: {
-      totalEmployees: employeeCounts.totalEmployees || 0,
-      totalOfficers: employeeCounts.totalOfficers || 0,
-      totalOfficials: employeeCounts.totalOfficials || 0,
+      totalEmployees: incumbency.counts.totalCurrentStaff || employeeCounts.totalEmployees || 0,
+      totalCurrentStaff: incumbency.counts.totalCurrentStaff || 0,
+      totalVacantSeats: incumbency.counts.totalVacantSeats || 0,
+      totalActiveInFinance: incumbency.counts.totalActiveInFinance || 0,
+      totalOfficers: incumbency.counts.totalOfficers || employeeCounts.totalOfficers || 0,
+      totalOfficials: incumbency.counts.totalOfficials || employeeCounts.totalOfficials || 0,
+      transferredEmployees: incumbency.counts.transferredEmployees || 0,
+      retiredEmployees: incumbency.counts.retiredEmployees || 0,
+      deceasedEmployees: incumbency.counts.deceasedEmployees || 0,
       totalOrganizationUnits: organizationCounts.totalOrganizationUnits || 0,
+      totalSectionsOffices: incumbency.counts.totalSectionsOffices || organizationCounts.totalOrganizationUnits || 0,
       topLevelUnits: organizationCounts.topLevelUnits || 0,
       totalSeats: seatCounts.totalSeats || 0,
       occupiedSeats: seatCounts.occupiedSeats || 0,
@@ -198,6 +215,9 @@ export const dashboardReport = asyncHandler(async (_req, res) => {
       designationCounts: employeeData.designationCounts || [],
       unitCounts: employeeData.unitCounts || [],
     },
+    designationWise: incumbency.designationWise,
+    sectionWise: incumbency.sectionWise,
+    compositionRules: incumbency.compositionRules,
   });
 });
 

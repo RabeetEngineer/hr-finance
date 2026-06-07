@@ -52,7 +52,7 @@ const employeeSchema = new mongoose.Schema(
     },
     employmentStatus: {
       type: String,
-      enum: ["active", "transferred", "retired", "deceased", "resigned", "suspended", "on_leave"],
+      enum: ["active", "vacant", "transferred", "retired", "deceased", "resigned", "suspended", "on_leave"],
       default: "active",
       index: true,
     },

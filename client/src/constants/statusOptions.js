@@ -1,11 +1,9 @@
 export const employeeStatusOptions = [
   { value: "active", label: "Active" },
+  { value: "vacant", label: "Vacant" },
   { value: "transferred", label: "Transferred" },
   { value: "retired", label: "Retired" },
   { value: "deceased", label: "Deceased" },
-  { value: "resigned", label: "Resigned" },
-  { value: "suspended", label: "Suspended" },
-  { value: "on_leave", label: "On Leave" },
 ];
 
 export const employeeTypeOptions = [
@@ -51,4 +49,3 @@ export const leaveTypeOptions = [
   { value: "maternity_leave", label: "Maternity Leave" },
   { value: "other", label: "Other" },
 ];
-

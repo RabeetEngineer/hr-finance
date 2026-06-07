@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
 
 const defaultSettings = {
-  columnDefaultsVersion: 2,
+  columnDefaultsVersion: 3,
   fontFamily: "inter",
   fontSize: 14,
   tableFontSize: 12,
@@ -15,7 +15,7 @@ const defaultSettings = {
   accentColor: "142 68% 29%",
   printTitle: "Incumbency Position",
   printSubtitle: "Punjab Finance Department",
-  screenColumns: ["sectionSerial", "name", "designation", "status"],
+  screenColumns: ["sectionSerial", "name", "remarks", "designation"],
   printColumns: ["total", "name", "designation", "section"],
 };
 
@@ -24,6 +24,7 @@ const columnOptions = [
   { key: "sectionSerial", label: "Sr.#" },
   { key: "name", label: "Name" },
   { key: "fatherName", label: "Father Name" },
+  { key: "remarks", label: "Remarks / Notes" },
   { key: "designation", label: "Designation" },
   { key: "serviceCadre", label: "Service/Cadre" },
   { key: "section", label: "Section" },

@@ -91,7 +91,13 @@ const buildQuery = (queryParams) => {
   if (queryParams.designationIds) {
     query.designation = { $in: toObjectIds(queryParams.designationIds) };
   }
-  if (queryParams.status) query.employmentStatus = queryParams.status;
+  if (queryParams.status) {
+    const statuses = String(queryParams.status)
+      .split(",")
+      .map((status) => status.trim())
+      .filter(Boolean);
+    query.employmentStatus = statuses.length > 1 ? { $in: statuses } : statuses[0];
+  }
   if (queryParams.gender) query.gender = queryParams.gender;
   if (queryParams.district) query.district = regexSearch(queryParams.district);
   if (queryParams.bps) query.bps = queryParams.bps;
@@ -506,7 +512,7 @@ export const updateEmployee = asyncHandler(async (req, res) => {
 
     if (employmentStatus) {
       employee.employmentStatus = employmentStatus;
-      if (["transferred", "retired", "deceased", "resigned"].includes(employmentStatus)) {
+      if (["vacant", "transferred", "retired", "deceased", "resigned"].includes(employmentStatus)) {
         await detachEmployeeFromSeat(employee, session);
       }
     }
@@ -535,6 +541,8 @@ export const updateEmployee = asyncHandler(async (req, res) => {
             ? "retired"
             : employee.employmentStatus === "deceased"
             ? "deceased"
+            : employee.employmentStatus === "vacant"
+            ? "vacant"
             : employee.employmentStatus === "resigned"
             ? "resigned"
             : employee.employmentStatus === "transferred"
@@ -588,7 +596,7 @@ export const updateEmployeeStatus = asyncHandler(async (req, res) => {
 
     employee.employmentStatus = nextStatus;
 
-    if (["transferred", "retired", "deceased", "resigned"].includes(nextStatus)) {
+    if (["vacant", "transferred", "retired", "deceased", "resigned"].includes(nextStatus)) {
       await detachEmployeeFromSeat(employee, session);
     }
 
@@ -605,6 +613,8 @@ export const updateEmployeeStatus = asyncHandler(async (req, res) => {
           ? "retired"
           : nextStatus === "deceased"
           ? "deceased"
+          : nextStatus === "vacant"
+          ? "vacant"
           : nextStatus === "resigned"
           ? "resigned"
           : nextStatus === "transferred"

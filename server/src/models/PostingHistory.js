@@ -5,7 +5,7 @@ const postingHistorySchema = new mongoose.Schema(
     employee: { type: mongoose.Schema.Types.ObjectId, ref: "Employee", required: true },
     actionType: {
       type: String,
-      enum: ["appointed", "posted", "transferred", "relieved", "retired", "deceased", "resigned", "suspended", "on_leave", "additional_charge"],
+      enum: ["appointed", "posted", "vacant", "transferred", "relieved", "retired", "deceased", "resigned", "suspended", "on_leave", "additional_charge"],
       required: true,
     },
     fromWing: { type: mongoose.Schema.Types.ObjectId, ref: "Wing", default: null },
@@ -25,4 +25,3 @@ const postingHistorySchema = new mongoose.Schema(
 postingHistorySchema.index({ employee: 1, effectiveDate: -1, actionType: 1 });
 
 export default mongoose.model("PostingHistory", postingHistorySchema);
-

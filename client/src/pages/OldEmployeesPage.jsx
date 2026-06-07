@@ -31,6 +31,7 @@ const editFormFromEmployee = (employee) => ({
   transferredToDepartment: employee.transferredToDepartment || "",
   transferredOutDate: dateInputValue(employee.transferredOutDate),
   retirementDate: dateInputValue(employee.retirementDate),
+  remarks: employee.remarks || "",
 });
 
 const fetchAll = async (status) => {
@@ -61,8 +62,8 @@ const OldEmployeesPage = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const [transferred, retired] = await Promise.all([fetchAll("transferred"), fetchAll("retired")]);
-      setRows([...transferred, ...retired].sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0)));
+      const [transferred, retired, deceased] = await Promise.all([fetchAll("transferred"), fetchAll("retired"), fetchAll("deceased")]);
+      setRows([...transferred, ...retired, ...deceased].sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0)));
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to load old employees"));
     } finally {
@@ -91,6 +92,7 @@ const OldEmployeesPage = () => {
         employee.designation?.name,
         compactUnitName(employee.currentOfficeSection),
         employee.transferredToDepartment,
+        employee.remarks,
       ]
         .filter(Boolean)
         .join(" ")
@@ -101,6 +103,7 @@ const OldEmployeesPage = () => {
 
   const transferredCount = rows.filter((employee) => employee.employmentStatus === "transferred").length;
   const retiredCount = rows.filter((employee) => employee.employmentStatus === "retired").length;
+  const deceasedCount = rows.filter((employee) => employee.employmentStatus === "deceased").length;
 
   const openEdit = (employee) => {
     setEditingEmployee(employee);
@@ -150,9 +153,9 @@ const OldEmployeesPage = () => {
           <div>
             <p className="text-xs font-black uppercase tracking-[0.2em] text-accent">Finance Department</p>
             <h1 className="mt-1 text-xl font-black">Old Employees</h1>
-            <p className="mt-1 text-xs text-muted-foreground">Transferred-out and retired employees remain here for history and record keeping.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Transferred, retired, and deceased employees remain here for history and record keeping.</p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-4">
             <div className="rounded-lg bg-surface-2 px-4 py-3">
               <p className="text-xs font-bold text-muted-foreground">Total</p>
               <p className="text-xl font-black">{rows.length}</p>
@@ -164,6 +167,10 @@ const OldEmployeesPage = () => {
             <div className="rounded-lg bg-surface-2 px-4 py-3">
               <p className="text-xs font-bold text-muted-foreground">Retired</p>
               <p className="text-xl font-black">{retiredCount}</p>
+            </div>
+            <div className="rounded-lg bg-surface-2 px-4 py-3">
+              <p className="text-xs font-bold text-muted-foreground">Deceased</p>
+              <p className="text-xl font-black">{deceasedCount}</p>
             </div>
           </div>
         </div>
@@ -178,6 +185,7 @@ const OldEmployeesPage = () => {
           <option value="all">All old employees</option>
           <option value="transferred">Transferred out</option>
           <option value="retired">Retired</option>
+          <option value="deceased">Deceased</option>
         </select>
       </div>
 
@@ -193,6 +201,7 @@ const OldEmployeesPage = () => {
                 <th>Status</th>
                 <th>Exit Date</th>
                 <th>Transferred To</th>
+                <th>Remarks / Notes</th>
                 <th>Personnel No.</th>
                 <th>CNIC</th>
                 {(canEdit || canDelete) ? <th className="text-right">Actions</th> : null}
@@ -201,7 +210,7 @@ const OldEmployeesPage = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={(canEdit || canDelete) ? 10 : 9} className="py-8 text-center text-muted-foreground">Loading old employees...</td>
+                  <td colSpan={(canEdit || canDelete) ? 11 : 10} className="py-8 text-center text-muted-foreground">Loading old employees...</td>
                 </tr>
               ) : filtered.length ? (
                 filtered.map((employee, index) => {
@@ -220,6 +229,7 @@ const OldEmployeesPage = () => {
                       </td>
                       <td>{formatDate(exitDate || employee.updatedAt)}</td>
                       <td>{employee.employmentStatus === "transferred" ? employee.transferredToDepartment || "-" : "-"}</td>
+                      <td>{employee.remarks || "-"}</td>
                       <td>{employee.personnelNumber || "-"}</td>
                       <td>{employee.cnic || "-"}</td>
                       {(canEdit || canDelete) ? (
@@ -243,7 +253,7 @@ const OldEmployeesPage = () => {
                 })
               ) : (
                 <tr>
-                  <td colSpan={(canEdit || canDelete) ? 10 : 9} className="py-8 text-center text-muted-foreground">
+                  <td colSpan={(canEdit || canDelete) ? 11 : 10} className="py-8 text-center text-muted-foreground">
                     <UserX className="mx-auto mb-2 h-6 w-6" />
                     No old employee records found.
                   </td>
@@ -282,7 +292,6 @@ const OldEmployeesPage = () => {
               <option value="transferred">Transferred</option>
               <option value="retired">Retired</option>
               <option value="deceased">Deceased</option>
-              <option value="resigned">Resigned</option>
             </select>
           </label>
           <label className="block">
@@ -298,6 +307,15 @@ const OldEmployeesPage = () => {
             <input type="date" className="input-shell" value={form.retirementDate} onChange={(event) => setForm((current) => ({ ...current, retirementDate: event.target.value }))} />
           </label>
         </div>
+        <label className="mt-4 block">
+          <span className="label-shell">Remarks / Notes</span>
+          <textarea
+            className="input-shell min-h-28"
+            placeholder="Enter leave, training, look-after arrangement, additional charge, temporary attachment, or any other administrative note..."
+            value={form.remarks}
+            onChange={(event) => setForm((current) => ({ ...current, remarks: event.target.value }))}
+          />
+        </label>
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={() => setEditingEmployee(null)}>
             <X className="h-4 w-4" />

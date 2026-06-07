@@ -29,6 +29,7 @@ const blankForm = {
   transferredOutDate: "",
   transferredToDepartment: "",
   retirementDate: "",
+  remarks: "",
 };
 
 const blankSectionForm = { name: "", code: "", parent: "" };
@@ -58,6 +59,7 @@ const printColumnOptions = [
   { key: "sectionSerial", label: "Sr.#" },
   { key: "name", label: "Name" },
   { key: "fatherName", label: "Father Name" },
+  { key: "remarks", label: "Remarks / Notes" },
   { key: "designation", label: "Designation" },
   { key: "serviceCadre", label: "Service/Cadre" },
   { key: "section", label: "Section" },
@@ -72,8 +74,8 @@ const printColumnOptions = [
 
 const defaultPrintColumns = ["total", "name", "designation", "section"];
 const screenColumnOptions = printColumnOptions;
-const defaultScreenColumns = ["sectionSerial", "name", "designation", "status"];
-const columnDefaultsVersion = 2;
+const defaultScreenColumns = ["sectionSerial", "name", "remarks", "designation"];
+const columnDefaultsVersion = 3;
 
 const savedColumnSetting = (key, fallback) => {
   try {
@@ -158,13 +160,24 @@ const employeeSearchText = (employee) =>
     employee.cnic,
     employee.mobileNumber,
     employee.gender,
+    employee.remarks,
   ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
 
 const compareText = (a, b) => clean(a).localeCompare(clean(b), undefined, { numeric: true, sensitivity: "base" });
-const statusLabel = (value) => clean(value).replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Active";
+const statusLabel = (value) => {
+  const labels = {
+    active: "Active",
+    vacant: "Vacant",
+    transferred: "Transferred",
+    retired: "Retired",
+    deceased: "Deceased",
+  };
+  const key = clean(value).toLowerCase();
+  return labels[key] || key.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Active";
+};
 
 const toggleValue = (values, value) => (values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
 const normalizeSearch = (value) =>
@@ -384,7 +397,7 @@ const EmployeesPage = ({ publicMode = false }) => {
         page,
         limit: filters.pageSize,
         sort: sortMap[filters.sort] || "sortOrder fullName",
-        status: "active",
+        status: "active,vacant",
         q: clean(filters.q) || undefined,
         designationIds: filters.designations.length ? filters.designations.join(",") : undefined,
         sectionIds: filters.sections.length ? filters.sections.join(",") : undefined,
@@ -482,6 +495,34 @@ const EmployeesPage = ({ publicMode = false }) => {
   };
 
   const sectionsById = useMemo(() => new Map(sections.map((section) => [String(getId(section)), section])), [sections]);
+  const orderedSections = useMemo(() => {
+    const childrenByParent = new Map();
+    sections.forEach((section) => {
+      const parentId = getId(section.parent || section.parentOfficeSection);
+      const key = parentId ? String(parentId) : "";
+      if (!childrenByParent.has(key)) childrenByParent.set(key, []);
+      childrenByParent.get(key).push(section);
+    });
+
+    const sortUnits = (items = []) =>
+      [...items].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || compareText(a.name || a.code, b.name || b.code));
+
+    const ordered = [];
+    const visited = new Set();
+    const visit = (items = []) => {
+      sortUnits(items).forEach((section) => {
+        const id = getId(section);
+        if (!id || visited.has(String(id))) return;
+        visited.add(String(id));
+        ordered.push(section);
+        visit(childrenByParent.get(String(id)));
+      });
+    };
+
+    visit(childrenByParent.get(""));
+    visit(sections.filter((section) => !visited.has(String(getId(section)))));
+    return ordered;
+  }, [sections]);
   const designationOptions = useMemo(
     () =>
       designations
@@ -500,8 +541,7 @@ const EmployeesPage = ({ publicMode = false }) => {
   );
   const sectionOptions = useMemo(
     () =>
-      [...sections]
-        .sort((a, b) => compareText(compactUnitName(a), compactUnitName(b)))
+      orderedSections
         .map((section) => ({
           id: getId(section),
           value: getId(section),
@@ -511,7 +551,7 @@ const EmployeesPage = ({ publicMode = false }) => {
           searchText: [section.name, section.code, section.path, compactUnitName(section), parentHint(section, sectionsById)].filter(Boolean).join(" "),
           pathText: section.path || "",
         })),
-    [sections, sectionsById]
+    [orderedSections, sectionsById]
   );
   const employeeSectionOptions = useMemo(
     () => sectionOptions.map((section) => ({ ...section, value: section.label })),
@@ -669,6 +709,7 @@ const EmployeesPage = ({ publicMode = false }) => {
       joining: formatDate(employee.dateOfJoiningCurrentDepartment || employee.dateOfJoiningGovernmentService),
       gender: employee.gender || "",
       status: employee.isOfficeHead ? "Head" : statusLabel(employee.employmentStatus || "active"),
+      remarks: employee.remarks || "",
     };
 
     return values[key] || "";
@@ -708,6 +749,7 @@ const EmployeesPage = ({ publicMode = false }) => {
       transferredOutDate: dateInputValue(employee.transferredOutDate),
       transferredToDepartment: employee.transferredToDepartment || "",
       retirementDate: dateInputValue(employee.retirementDate),
+      remarks: employee.remarks || "",
     });
     setFormOpen(true);
   };
@@ -795,6 +837,7 @@ const EmployeesPage = ({ publicMode = false }) => {
       transferredOutDate: form.employmentStatus === "transferred" ? form.transferredOutDate || undefined : undefined,
       transferredToDepartment: form.employmentStatus === "transferred" ? clean(form.transferredToDepartment) || undefined : undefined,
       retirementDate: form.employmentStatus === "retired" ? form.retirementDate || undefined : undefined,
+      remarks: clean(form.remarks),
       sortOrder: editingEmployee?.sortOrder || employees.length + 1,
     };
   };
@@ -839,7 +882,7 @@ const EmployeesPage = ({ publicMode = false }) => {
 
   const moveRow = async (section, employeeId, direction) => {
     const rows = section?.id
-      ? await fetchEmployeePage({ section: section.id, sort: "sortOrder fullName", status: "active", limit: 800 })
+      ? await fetchEmployeePage({ section: section.id, sort: "sortOrder fullName", status: "active,vacant", limit: 800 })
       : section.rows || [];
     const rowIndex = rows.findIndex((employee) => String(getId(employee)) === String(employeeId));
     const targetIndex = direction === "up" ? rowIndex - 1 : rowIndex + 1;
@@ -1141,7 +1184,7 @@ const EmployeesPage = ({ publicMode = false }) => {
 
                     const employee = row.employee;
                     return (
-                      <tr key={getId(employee)} className={employee.isOfficeHead ? "office-head-row" : undefined}>
+                      <tr key={getId(employee)} className={employee.isOfficeHead ? "office-head-row" : employee.employmentStatus === "vacant" ? "vacant-row" : undefined}>
                         {visibleScreenColumns.map((column) => (
                           <td key={column.key} className={column.key === "name" ? "font-semibold text-foreground" : column.key === "gender" ? "capitalize" : undefined}>
                             {column.key === "name" ? (
@@ -1212,7 +1255,7 @@ const EmployeesPage = ({ publicMode = false }) => {
                 const employee = row.employee;
                 const mobileDetailColumns = visibleScreenColumns.filter((column) => !["name", "designation"].includes(column.key));
                 return (
-                  <div key={`mobile-employee-${getId(employee)}`} className={employee.isOfficeHead ? "rounded-xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm" : "rounded-xl border border-border bg-surface p-4 shadow-sm"}>
+                  <div key={`mobile-employee-${getId(employee)}`} className={employee.isOfficeHead ? "rounded-xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm" : employee.employmentStatus === "vacant" ? "rounded-xl border border-slate-300 bg-slate-50 p-4 shadow-sm" : "rounded-xl border border-border bg-surface p-4 shadow-sm"}>
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="inline-flex items-center gap-1.5 text-base font-black">
@@ -1221,8 +1264,8 @@ const EmployeesPage = ({ publicMode = false }) => {
                         </p>
                         <p className="text-sm text-muted-foreground">{employee.designation?.name || "-"}</p>
                       </div>
-                      <span className={employee.isOfficeHead ? "rounded-md bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800" : "rounded-md bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700"}>
-                        {employee.isOfficeHead ? "Head" : "Active"}
+                      <span className={employee.isOfficeHead ? "rounded-md bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800" : employee.employmentStatus === "vacant" ? "rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700" : "rounded-md bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700"}>
+                        {employee.isOfficeHead ? "Head" : statusLabel(employee.employmentStatus || "active")}
                       </span>
                     </div>
                     {mobileDetailColumns.length ? (
@@ -1402,9 +1445,11 @@ const EmployeesPage = ({ publicMode = false }) => {
           <label className="block">
             <span className="label-shell">Incumbency Action</span>
             <select className="input-shell" value={form.employmentStatus} onChange={(event) => setForm((current) => ({ ...current, employmentStatus: event.target.value }))}>
-              <option value="active">Active in Finance</option>
-              <option value="transferred">Transferred to another department</option>
+              <option value="active">Active</option>
+              <option value="vacant">Vacant</option>
+              <option value="transferred">Transferred</option>
               <option value="retired">Retired</option>
+              <option value="deceased">Deceased</option>
             </select>
           </label>
           {form.employmentStatus === "transferred" ? (
@@ -1426,6 +1471,15 @@ const EmployeesPage = ({ publicMode = false }) => {
             </label>
           ) : null}
         </div>
+        <label className="mt-4 block">
+          <span className="label-shell">Remarks / Notes</span>
+          <textarea
+            className="input-shell min-h-28"
+            placeholder="Enter leave, training, look-after arrangement, additional charge, temporary attachment, or any other administrative note..."
+            value={form.remarks}
+            onChange={(event) => setForm((current) => ({ ...current, remarks: event.target.value }))}
+          />
+        </label>
         <div className="mt-6 flex justify-end gap-3">
           <button type="button" className="btn-secondary" onClick={() => setFormOpen(false)}>
             <X className="h-4 w-4" />

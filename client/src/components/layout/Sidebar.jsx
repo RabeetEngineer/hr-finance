@@ -4,6 +4,7 @@ import {
   GitBranch,
   Import,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   Settings,
   Tags,
@@ -19,6 +20,7 @@ import { cn } from "@/utils/cn";
 const navigation = [
   { to: "/employees", label: "Incumbency Sheet", icon: Users },
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/lists", label: "Lists", icon: ListChecks },
   { to: "/structure", label: "Offices / Sections", icon: GitBranch },
   { to: "/designations", label: "Designations", icon: Tags, roles: ["super_admin", "admin"] },
   { to: "/import", label: "Import Data", icon: Import, roles: ["super_admin", "admin"] },

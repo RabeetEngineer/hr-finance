@@ -40,6 +40,7 @@ const schema = z.object({
   ]),
   employmentStatus: z.enum([
     "active",
+    "vacant",
     "transferred",
     "retired",
     "deceased",
@@ -412,7 +413,7 @@ const EmployeeForm = ({
                   ))}
                 </Select>
                 <Select
-                  label="Employment Status"
+                  label="Incumbency Action"
                   {...register("employmentStatus")}
                 >
                   {employeeStatusOptions.map((option) => (
@@ -499,7 +500,11 @@ const EmployeeForm = ({
                 <TextArea label="Address" {...register("address")} />
               </div>
               <div className="mt-4">
-                <TextArea label="Remarks" {...register("remarks")} />
+                <TextArea
+                  label="Remarks / Notes"
+                  placeholder="Enter leave, training, look-after arrangement, additional charge, temporary attachment, or any other administrative note..."
+                  {...register("remarks")}
+                />
               </div>
 
               <div className="mt-6 rounded-3xl border border-border bg-surface-2/70 p-4">

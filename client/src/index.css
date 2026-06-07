@@ -145,6 +145,18 @@
     @apply bg-amber-100/80;
   }
 
+  .incumbency-table .vacant-row td {
+    @apply bg-slate-50 text-slate-700;
+  }
+
+  .incumbency-table .vacant-row td:first-child {
+    @apply border-l-4 border-l-slate-400;
+  }
+
+  .incumbency-table .vacant-row:hover td {
+    @apply bg-slate-100;
+  }
+
   .incumbency-table .section-row td {
     @apply sticky left-0 z-10 bg-muted py-2.5 text-sm font-black uppercase tracking-[0.08em] text-foreground shadow-[8px_0_16px_-14px_rgba(15,23,42,0.45)];
   }

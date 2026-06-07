@@ -4,6 +4,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
 import EmployeesPage from "@/pages/EmployeesPage";
+import ListsPage from "@/pages/ListsPage";
 import OldEmployeesPage from "@/pages/OldEmployeesPage";
 import StructurePage from "@/pages/StructurePage";
 import DesignationsPage from "@/pages/DesignationsPage";
@@ -47,6 +48,7 @@ const App = () => {
         <Route path="/" element={<Navigate to="/employees" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/employees" element={<EmployeesPage />} />
+        <Route path="/lists" element={<ListsPage />} />
         <Route path="/old-employees" element={<OldEmployeesPage />} />
         <Route path="/old-employees/*" element={<OldEmployeesPage />} />
         <Route path="/oldemployees" element={<OldEmployeesPage />} />

@@ -23,6 +23,7 @@ const toneMap = {
 };
 
 const labelMap = {
+  active: "Active",
   on_leave: "On Leave",
   additional_charge: "Additional Charge",
   support_staff: "Support Staff",
