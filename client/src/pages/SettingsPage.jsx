@@ -24,7 +24,7 @@ const columnOptions = [
   { key: "sectionSerial", label: "Sr.#" },
   { key: "name", label: "Name" },
   { key: "fatherName", label: "Father Name" },
-  { key: "remarks", label: "Remarks / Notes" },
+  { key: "remarks", label: "Remarks" },
   { key: "designation", label: "Designation" },
   { key: "serviceCadre", label: "Service/Cadre" },
   { key: "section", label: "Section" },

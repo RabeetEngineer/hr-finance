@@ -22,4 +22,3 @@ export const protect = async (req, _res, next) => {
     next(new AppError("Not authorized, token invalid", 401));
   }
 };
-

@@ -101,24 +101,22 @@ export const deleteDesignation = asyncHandler(async (req, res) => {
 
   if (seatCount || employeeCount) {
     throw new AppError(
-      "Designation cannot be deactivated because seats or employees are still linked to it",
+      "Designation cannot be deleted because seats or employees are still linked to it",
       409
     );
   }
 
   const before = shape(designation);
-  designation.isActive = false;
-  await designation.save();
+  await Designation.deleteOne({ _id: designation._id });
 
   await logActivity({
     actorUser: req.user?._id,
-    action: "deactivate",
+    action: "delete",
     entityType: "Designation",
     entityId: designation._id,
-    summary: `Deactivated designation ${designation.name}`,
+    summary: `Deleted designation ${designation.name}`,
     before,
-    after: shape(designation),
   });
 
-  return apiResponse(res, 200, "Designation deactivated", shape(designation));
+  return apiResponse(res, 200, "Designation deleted", before);
 });

@@ -218,12 +218,12 @@ const SeatsPage = () => {
     setDeleting(true);
     try {
       await seatService.remove(confirmDelete.id);
-      toast.success("Seat deactivated successfully");
+      toast.success("Seat deleted successfully");
       setConfirmDelete(null);
       notifyResourceChanged("seats");
       await loadSeats(query());
     } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to deactivate seat"));
+      toast.error(getErrorMessage(error, "Failed to delete seat"));
     } finally {
       setDeleting(false);
     }
@@ -444,7 +444,7 @@ const SeatsPage = () => {
               ) : null}
               <button type="button" className="btn-ghost px-3 py-2 text-xs text-danger" onClick={() => setConfirmDelete(row)}>
                 <Trash2 className="h-4 w-4" />
-                Deactivate
+                Delete
               </button>
             </div>
           )}
@@ -506,7 +506,7 @@ const SeatsPage = () => {
                 </button>
               ) : null}
               <button type="button" className="btn-ghost text-danger" onClick={() => setConfirmDelete(viewSeat)}>
-                Deactivate Seat
+                Delete Seat
               </button>
             </div>
           </div>
@@ -613,9 +613,9 @@ const SeatsPage = () => {
 
       <ConfirmDialog
         open={Boolean(confirmDelete)}
-        title="Deactivate seat"
-        description={`Deactivate ${confirmDelete?.seatTitle || "this seat"}? Seats with employees or additional charge records cannot be deactivated until they are cleared.`}
-        confirmLabel="Deactivate"
+        title="Delete seat"
+        description={`Delete ${confirmDelete?.seatTitle || "this seat"}? Seats with employees, additional charge, posting, or transfer history cannot be deleted until they are cleared.`}
+        confirmLabel="Delete"
         loading={deleting}
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete(null)}

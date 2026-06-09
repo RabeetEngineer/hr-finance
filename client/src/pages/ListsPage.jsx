@@ -18,7 +18,7 @@ const columns = [
   { key: "sectionSerial", label: "Section Sr.#" },
   { key: "name", label: "Name" },
   { key: "fatherName", label: "Father Name" },
-  { key: "remarks", label: "Remarks / Notes" },
+  { key: "remarks", label: "Remarks" },
   { key: "designation", label: "Designation" },
   { key: "serviceCadre", label: "Service/Cadre" },
   { key: "section", label: "Office / Section" },
@@ -110,7 +110,7 @@ const cellValue = (employee, key, index, sectionIndex) => {
 
 const toggleValue = (values, value) => (values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
 
-const MultiSelect = ({ label, options, values, onChange }) => {
+const MultiSelect = ({ label, options, values, onChange, defaultValues = defaultListColumns, emptyLabel = "Default" }) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const ref = useRef(null);
@@ -134,7 +134,7 @@ const MultiSelect = ({ label, options, values, onChange }) => {
       <button type="button" className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-border bg-white px-3 py-1.5 text-left text-sm" onClick={() => setOpen((value) => !value)}>
         <span className="min-w-0">
           <span className="block truncate text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
-          <span className="block truncate text-xs font-semibold text-foreground">{selectedLabels.length ? `${selectedLabels.length} selected` : "Default"}</span>
+          <span className="block truncate text-xs font-semibold text-foreground">{selectedLabels.length ? `${selectedLabels.length} selected` : emptyLabel}</span>
         </span>
         <span className="text-xs text-muted-foreground">{selectedLabels.length || ""}</span>
       </button>
@@ -146,8 +146,8 @@ const MultiSelect = ({ label, options, values, onChange }) => {
               <button type="button" className="rounded-md border border-border px-2 py-1.5 text-xs font-bold text-foreground hover:bg-muted" onClick={() => onChange(options.map((option) => option.value))}>
                 Select all
               </button>
-              <button type="button" className="rounded-md border border-border px-2 py-1.5 text-xs font-bold text-muted-foreground hover:bg-muted" onClick={() => onChange(defaultListColumns)}>
-                Default
+              <button type="button" className="rounded-md border border-border px-2 py-1.5 text-xs font-bold text-muted-foreground hover:bg-muted" onClick={() => onChange(defaultValues)}>
+                {defaultValues.length ? "Default" : "Clear all"}
               </button>
             </div>
           </div>
@@ -171,7 +171,7 @@ const ListsPage = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
-  const [section, setSection] = useState("");
+  const [sections, setSections] = useState([]);
   const [screenColumns, setScreenColumns] = useState(() => savedColumnSetting("screenColumns", defaultListColumns));
   const [printColumns, setPrintColumns] = useState(() => savedColumnSetting("printColumns", defaultListColumns));
 
@@ -194,7 +194,7 @@ const ListsPage = () => {
   const loadDesignation = async (designationId) => {
     setSelectedDesignationId(designationId);
     setQuery("");
-    setSection("");
+    setSections([]);
     if (!designationId) {
       setRows([]);
       return;
@@ -216,18 +216,18 @@ const ListsPage = () => {
       const id = getId(employee.currentOfficeSection) || "unassigned";
       if (!sections.has(id)) sections.set(id, compactUnitName(employee.currentOfficeSection));
     });
-    return [...sections.entries()];
+    return [...sections.entries()].map(([value, label]) => ({ value, label }));
   }, [rows]);
 
   const filteredRows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return rows.filter((employee) => {
       const sectionId = getId(employee.currentOfficeSection) || "unassigned";
-      if (section && sectionId !== section) return false;
+      if (sections.length && !sections.includes(sectionId)) return false;
       if (!needle) return true;
       return rowText(employee).includes(needle);
     });
-  }, [query, rows, section]);
+  }, [query, rows, sections]);
 
   const summary = useMemo(() => designationSummary(rows), [rows]);
   const visibleScreenColumns = useMemo(() => columns.filter((column) => screenColumns.includes(column.key)), [screenColumns]);
@@ -298,12 +298,7 @@ const ListsPage = () => {
             <Search className="h-4 w-4 text-muted-foreground" />
             <input className="w-full bg-transparent text-sm outline-none" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search within list..." />
           </label>
-          <select className="input-shell" value={section} onChange={(event) => setSection(event.target.value)}>
-            <option value="">All sections</option>
-            {sectionOptions.map(([id, name]) => (
-              <option key={id} value={id}>{name}</option>
-            ))}
-          </select>
+          <MultiSelect label="Offices / Sections" options={sectionOptions} values={sections} onChange={setSections} defaultValues={[]} emptyLabel="All sections" />
           <MultiSelect label="Screen columns" options={columns.map((column) => ({ value: column.key, label: column.label }))} values={screenColumns} onChange={setScreenColumnSelection} />
           <MultiSelect label="Print columns" options={columns.map((column) => ({ value: column.key, label: column.label }))} values={printColumns} onChange={setPrintColumnSelection} />
           <div className="grid grid-cols-2 gap-2 md:col-span-2 xl:col-span-1">

@@ -1,5 +1,13 @@
 import ActivityLog from "../models/ActivityLog.js";
 
+const summarizeChanges = (before, after) => {
+  if (!before || !after || typeof before !== "object" || typeof after !== "object") return [];
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  return [...keys]
+    .filter((key) => JSON.stringify(before[key] ?? null) !== JSON.stringify(after[key] ?? null))
+    .slice(0, 50);
+};
+
 export const logActivity = async ({
   actorUser = null,
   action,
@@ -21,7 +29,11 @@ export const logActivity = async ({
         summary,
         before,
         after,
-        metadata,
+        metadata: {
+          ...metadata,
+          changedFields: summarizeChanges(before, after),
+          recordedAt: new Date(),
+        },
       },
     ],
     session ? { session } : undefined
@@ -29,4 +41,3 @@ export const logActivity = async ({
 
   return log[0];
 };
-

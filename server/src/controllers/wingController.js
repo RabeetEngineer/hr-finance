@@ -96,24 +96,22 @@ export const deleteWing = asyncHandler(async (req, res) => {
 
   if (officeCount || seatCount || employeeCount) {
     throw new AppError(
-      "Wing cannot be deactivated because offices, seats, or employees are still linked to it",
+      "Wing cannot be deleted because offices, seats, or employees are still linked to it",
       409
     );
   }
 
   const before = shape(wing);
-  wing.isActive = false;
-  await wing.save();
+  await Wing.deleteOne({ _id: wing._id });
 
   await logActivity({
     actorUser: req.user?._id,
-    action: "deactivate",
+    action: "delete",
     entityType: "Wing",
     entityId: wing._id,
-    summary: `Deactivated wing ${wing.name}`,
+    summary: `Deleted wing ${wing.name}`,
     before,
-    after: shape(wing),
   });
 
-  return apiResponse(res, 200, "Wing deactivated", shape(wing));
+  return apiResponse(res, 200, "Wing deleted", before);
 });

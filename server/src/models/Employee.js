@@ -15,8 +15,26 @@ const employeeSchema = new mongoose.Schema(
   {
     fullName: { type: String, required: true, trim: true },
     fatherName: { type: String, trim: true },
-    cnic: { type: String, unique: true, sparse: true, trim: true },
-    personnelNumber: { type: String, unique: true, sparse: true, trim: true },
+    cnic: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      set: (value) => {
+        const next = String(value || "").replace(/\D/g, "");
+        return next || undefined;
+      },
+    },
+    personnelNumber: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      set: (value) => {
+        const next = String(value || "").trim();
+        return next || undefined;
+      },
+    },
     designation: { type: mongoose.Schema.Types.ObjectId, ref: "Designation", required: true },
     bps: { type: String, trim: true },
     serviceCadre: { type: String, trim: true },
@@ -76,6 +94,10 @@ employeeSchema.index({
   mobileNumber: "text",
   email: "text",
   district: "text",
+  domicile: "text",
+  qualification: "text",
+  address: "text",
+  remarks: "text",
 });
 employeeSchema.index({ employmentStatus: 1, isArchived: 1 });
 employeeSchema.index({ currentOfficeSection: 1, employmentStatus: 1, isArchived: 1, sortOrder: 1, fullName: 1 });

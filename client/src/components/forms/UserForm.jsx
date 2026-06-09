@@ -10,9 +10,11 @@ const UserForm = ({ defaultValues, onSubmit, submitLabel = "Save User", isEdit =
       z.object({
         fullName: z.string().min(2, "Full name is required"),
         email: z.string().email("Enter a valid email"),
+        mobile: z.string().optional(),
         password: isEdit ? z.string().optional() : z.string().min(6, "Password is required"),
         role: z.enum(["super_admin", "admin", "data_entry", "viewer"]),
         isActive: z.coerce.boolean().default(true),
+        isEmailVerified: z.coerce.boolean().default(false),
       }),
     [isEdit]
   );
@@ -27,9 +29,11 @@ const UserForm = ({ defaultValues, onSubmit, submitLabel = "Save User", isEdit =
     defaultValues: defaultValues || {
       fullName: "",
       email: "",
+      mobile: "",
       password: "",
       role: "viewer",
       isActive: true,
+      isEmailVerified: false,
     },
   });
 
@@ -38,7 +42,14 @@ const UserForm = ({ defaultValues, onSubmit, submitLabel = "Save User", isEdit =
   }, [defaultValues, reset]);
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+    <form
+      className="space-y-4"
+      onSubmit={handleSubmit((values) => {
+        const payload = { ...values };
+        if (isEdit && !payload.password) delete payload.password;
+        onSubmit(payload);
+      })}
+    >
       <div>
         <label className="label-shell">Full Name</label>
         <input className="input-shell" {...register("fullName")} placeholder="Muhammad Ali" />
@@ -49,6 +60,12 @@ const UserForm = ({ defaultValues, onSubmit, submitLabel = "Save User", isEdit =
           <label className="label-shell">Email</label>
           <input className="input-shell" type="email" {...register("email")} placeholder="user@punjab.gov.pk" />
         </div>
+        <div>
+          <label className="label-shell">Mobile</label>
+          <input className="input-shell" type="tel" {...register("mobile")} placeholder="0300 0000000" />
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
         <div>
           <label className="label-shell">Password {isEdit ? "(leave blank to keep current)" : ""}</label>
           <input className="input-shell" type="password" {...register("password")} placeholder="••••••••" />
@@ -64,10 +81,16 @@ const UserForm = ({ defaultValues, onSubmit, submitLabel = "Save User", isEdit =
           ))}
         </select>
       </div>
-      <label className="flex items-center gap-3 text-sm font-medium text-foreground/80">
-        <input type="checkbox" {...register("isActive")} />
-        Active
-      </label>
+      <div className="grid gap-2 rounded-lg border border-border bg-surface-2 p-3">
+        <label className="flex items-center gap-3 text-sm font-medium text-foreground/80">
+          <input type="checkbox" {...register("isActive")} />
+          Active / approved by super admin
+        </label>
+        <label className="flex items-center gap-3 text-sm font-medium text-foreground/80">
+          <input type="checkbox" {...register("isEmailVerified")} />
+          Email verified
+        </label>
+      </div>
       <button type="submit" className="btn-primary" disabled={isSubmitting}>
         {isSubmitting ? "Saving..." : submitLabel}
       </button>

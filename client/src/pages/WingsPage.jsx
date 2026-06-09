@@ -111,12 +111,12 @@ const WingsPage = () => {
     setDeleting(true);
     try {
       await wingService.remove(confirmDelete.id);
-      toast.success("Wing deactivated successfully");
+      toast.success("Wing deleted successfully");
       setConfirmDelete(null);
       notifyResourceChanged("wings");
       await loadWings(submitQuery());
     } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to deactivate wing"));
+      toast.error(getErrorMessage(error, "Failed to delete wing"));
     } finally {
       setDeleting(false);
     }
@@ -219,7 +219,7 @@ const WingsPage = () => {
               </button>
               <button type="button" className="btn-ghost px-3 py-2 text-xs text-danger" onClick={() => setConfirmDelete(row)}>
                 <Trash2 className="h-4 w-4" />
-                Deactivate
+                Delete
               </button>
             </div>
           )}
@@ -244,9 +244,9 @@ const WingsPage = () => {
 
       <ConfirmDialog
         open={Boolean(confirmDelete)}
-        title="Deactivate wing"
-        description={`Deactivate ${confirmDelete?.name || "this wing"}? Linked records will prevent deletion if the wing is still in use.`}
-        confirmLabel="Deactivate"
+        title="Delete wing"
+        description={`Delete ${confirmDelete?.name || "this wing"}? Linked records will prevent deletion if the wing is still in use.`}
+        confirmLabel="Delete"
         loading={deleting}
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete(null)}

@@ -7,6 +7,7 @@ import AdditionalCharge from "../models/AdditionalCharge.js";
 import PostingHistory from "../models/PostingHistory.js";
 import Designation from "../models/Designation.js";
 import OrganizationUnit from "../models/OrganizationUnit.js";
+import Wing from "../models/Wing.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { apiResponse } from "../utils/apiResponse.js";
 import AppError from "../utils/AppError.js";
@@ -62,6 +63,8 @@ const toObjectIds = (values) =>
     .map((value) => new mongoose.Types.ObjectId(value));
 
 const toObjectId = (value) => (mongoose.Types.ObjectId.isValid(value) ? new mongoose.Types.ObjectId(value) : value);
+const cleanString = (value) => String(value || "").trim();
+const normalizeCnic = (value) => cleanString(value).replace(/\D/g, "");
 
 const employeeListSelect =
   "fullName fatherName cnic personnelNumber designation bps serviceCadre isOfficeHead gender sortOrder dateOfBirth dateOfJoiningGovernmentService dateOfJoiningCurrentDepartment dateOfJoiningCurrentPost transferredOutDate transferredToDepartment retirementDate currentOfficeSection currentWing currentSeat district domicile mobileNumber whatsappNumber email address qualification employeeType staffCategory employmentStatus profilePhoto remarks attachments isArchived archivedAt createdAt updatedAt";
@@ -75,10 +78,17 @@ const buildQuery = (queryParams) => {
       { fatherName: regexSearch(queryParams.q) },
       { cnic: regexSearch(queryParams.q) },
       { personnelNumber: regexSearch(queryParams.q) },
+      { bps: regexSearch(queryParams.q) },
       { serviceCadre: regexSearch(queryParams.q) },
       { mobileNumber: regexSearch(queryParams.q) },
       { whatsappNumber: regexSearch(queryParams.q) },
       { email: regexSearch(queryParams.q) },
+      { district: regexSearch(queryParams.q) },
+      { domicile: regexSearch(queryParams.q) },
+      { address: regexSearch(queryParams.q) },
+      { qualification: regexSearch(queryParams.q) },
+      { transferredToDepartment: regexSearch(queryParams.q) },
+      { remarks: regexSearch(queryParams.q) },
     ];
   }
 
@@ -281,22 +291,62 @@ const assertDesignationCapacity = async ({ designationId, employeeId = null, ses
   }
 };
 
+const assertUniqueEmployeeFields = async ({ cnic, personnelNumber, employeeId = null, session = null }) => {
+  const or = [];
+  const normalizedCnic = normalizeCnic(cnic);
+  const normalizedPersonnelNumber = cleanString(personnelNumber);
+
+  if (normalizedCnic) {
+    if (normalizedCnic.length !== 13) throw new AppError("CNIC must contain exactly 13 digits", 400);
+    or.push({ cnic: normalizedCnic });
+  }
+  if (normalizedPersonnelNumber) or.push({ personnelNumber: normalizedPersonnelNumber });
+  if (!or.length) return;
+
+  const query = { $or: or };
+  if (employeeId) query._id = { $ne: employeeId };
+  const existingQuery = Employee.findOne(query).select("fullName cnic personnelNumber").lean();
+  if (session) existingQuery.session(session);
+  const existing = await existingQuery;
+  if (!existing) return;
+
+  if (normalizedCnic && existing.cnic === normalizedCnic) {
+    throw new AppError(`CNIC already exists for ${existing.fullName}`, 409);
+  }
+  if (normalizedPersonnelNumber && existing.personnelNumber === normalizedPersonnelNumber) {
+    throw new AppError(`Personnel No. already exists for ${existing.fullName}`, 409);
+  }
+};
+
 export const listEmployees = asyncHandler(async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query);
   const query = buildQuery(req.query);
 
   if (req.query.q) {
-    const [matchingDesignations, matchingSections] = await Promise.all([
-      Designation.find({ name: regexSearch(req.query.q), isActive: { $ne: false } }).select("_id").lean(),
+    const [matchingDesignations, matchingSections, matchingWings] = await Promise.all([
+      Designation.find({
+        isActive: { $ne: false },
+        $or: [{ name: regexSearch(req.query.q) }, { bps: regexSearch(req.query.q) }, { category: regexSearch(req.query.q) }],
+      })
+        .select("_id")
+        .lean(),
       OrganizationUnit.find({
         isActive: { $ne: false },
         $or: [{ name: regexSearch(req.query.q) }, { code: regexSearch(req.query.q) }, { path: regexSearch(req.query.q) }],
       }).select("_id").lean(),
+      Wing.find({
+        isActive: { $ne: false },
+        $or: [{ name: regexSearch(req.query.q) }, { code: regexSearch(req.query.q) }],
+      })
+        .select("_id")
+        .lean(),
     ]);
     const designationIds = matchingDesignations.map((designation) => designation._id);
     const sectionIds = matchingSections.map((section) => section._id);
+    const wingIds = matchingWings.map((wing) => wing._id);
     if (designationIds.length) query.$or.push({ designation: { $in: designationIds } });
     if (sectionIds.length) query.$or.push({ currentOfficeSection: { $in: sectionIds } });
+    if (wingIds.length) query.$or.push({ currentWing: { $in: wingIds } });
   }
 
   const employeeQuery = Employee.find(query)
@@ -359,17 +409,30 @@ export const getEmployeeSectionCounts = asyncHandler(async (req, res) => {
   const query = buildQuery({ ...req.query, section: undefined, sectionIds: undefined });
 
   if (req.query.q) {
-    const [matchingDesignations, matchingSections] = await Promise.all([
-      Designation.find({ name: regexSearch(req.query.q), isActive: { $ne: false } }).select("_id").lean(),
+    const [matchingDesignations, matchingSections, matchingWings] = await Promise.all([
+      Designation.find({
+        isActive: { $ne: false },
+        $or: [{ name: regexSearch(req.query.q) }, { bps: regexSearch(req.query.q) }, { category: regexSearch(req.query.q) }],
+      })
+        .select("_id")
+        .lean(),
       OrganizationUnit.find({
         isActive: { $ne: false },
         $or: [{ name: regexSearch(req.query.q) }, { code: regexSearch(req.query.q) }, { path: regexSearch(req.query.q) }],
       }).select("_id").lean(),
+      Wing.find({
+        isActive: { $ne: false },
+        $or: [{ name: regexSearch(req.query.q) }, { code: regexSearch(req.query.q) }],
+      })
+        .select("_id")
+        .lean(),
     ]);
     const designationIds = matchingDesignations.map((designation) => designation._id);
     const sectionIds = matchingSections.map((section) => section._id);
+    const wingIds = matchingWings.map((wing) => wing._id);
     if (designationIds.length) query.$or.push({ designation: { $in: designationIds } });
     if (sectionIds.length) query.$or.push({ currentOfficeSection: { $in: sectionIds } });
+    if (wingIds.length) query.$or.push({ currentWing: { $in: wingIds } });
   }
 
   const rows = await Employee.aggregate([
@@ -400,6 +463,11 @@ export const createEmployee = asyncHandler(async (req, res) => {
     if ((payload.employmentStatus || "active") === "active") {
       await assertDesignationCapacity({ designationId: payload.designation, session });
     }
+    await assertUniqueEmployeeFields({
+      cnic: payload.cnic,
+      personnelNumber: payload.personnelNumber,
+      session,
+    });
 
     const employee = await Employee.create([payload], { session });
     const created = employee[0];
@@ -500,6 +568,12 @@ export const updateEmployee = asyncHandler(async (req, res) => {
 
     Object.assign(employee, rest, {
       updatedBy: req.user?._id,
+    });
+    await assertUniqueEmployeeFields({
+      cnic: employee.cnic,
+      personnelNumber: employee.personnelNumber,
+      employeeId: employee._id,
+      session,
     });
 
     if (currentSeat !== undefined) {
@@ -644,7 +718,7 @@ export const updateEmployeeStatus = asyncHandler(async (req, res) => {
 
 export const deleteEmployee = asyncHandler(async (req, res) => {
   const session = await mongoose.startSession();
-  let archived = null;
+  let deletedEmployee = null;
 
   await session.withTransaction(async () => {
     const employee = await Employee.findById(req.params.id).session(session);
@@ -652,24 +726,42 @@ export const deleteEmployee = asyncHandler(async (req, res) => {
 
     const before = shape(employee);
     await detachEmployeeFromSeat(employee, session);
-    employee.isArchived = true;
-    employee.archivedAt = new Date();
-    await employee.save({ session });
+    await Promise.all([
+      Seat.updateMany(
+        { additionalChargeHolder: employee._id, currentEmployee: null },
+        { $set: { additionalChargeHolder: null, seatStatus: "vacant" } },
+        { session }
+      ),
+      Seat.updateMany(
+        { additionalChargeHolder: employee._id, currentEmployee: { $ne: null } },
+        { $set: { additionalChargeHolder: null, seatStatus: "occupied" } },
+        { session }
+      ),
+    ]);
+    await Promise.all([
+      TransferRecord.deleteMany({ employee: employee._id }).session(session),
+      LeaveRecord.deleteMany({ employee: employee._id }).session(session),
+      AdditionalCharge.deleteMany({ additionalChargeHolder: employee._id }).session(session),
+      PostingHistory.deleteMany({ employee: employee._id }).session(session),
+    ]);
+    await Employee.deleteOne({ _id: employee._id }).session(session);
 
     await logActivity({
       actorUser: req.user?._id,
-      action: "archive",
+      action: "delete",
       entityType: "Employee",
       entityId: employee._id,
-      summary: `Archived employee ${employee.fullName}`,
+      summary: `Deleted employee ${employee.fullName}`,
       before,
-      after: shape(employee),
+      metadata: {
+        relatedRecordsRemoved: ["transferRecords", "leaveRecords", "additionalCharges", "postingHistory"],
+      },
       session,
     });
 
-    archived = employee;
+    deletedEmployee = employee;
   });
 
   session.endSession();
-  return apiResponse(res, 200, "Employee archived", shape(archived));
+  return apiResponse(res, 200, "Employee deleted", shape(deletedEmployee));
 });

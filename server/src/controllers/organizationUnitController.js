@@ -361,27 +361,24 @@ export const deleteOrganizationUnit = asyncHandler(async (req, res) => {
 
   if (childCount || employeeCount || seatCount) {
     throw new AppError(
-      "Organization unit cannot be deactivated because child units, employees, or seats are still linked to it",
+      "Organization unit cannot be deleted because child units, employees, or seats are still linked to it",
       409
     );
   }
 
   const before = shapeUnit(unit);
-  unit.isActive = false;
-  unit.updatedBy = req.user?._id;
-  await unit.save();
+  await OrganizationUnit.deleteOne({ _id: unit._id });
 
   await logActivity({
     actorUser: req.user?._id,
-    action: "deactivate",
+    action: "delete",
     entityType: "OrganizationUnit",
     entityId: unit._id,
-    summary: `Deactivated organization unit ${unit.name}`,
+    summary: `Deleted organization unit ${unit.name}`,
     before,
-    after: shapeUnit(unit),
   });
 
-  return apiResponse(res, 200, "Organization unit deactivated", shapeUnit(unit));
+  return apiResponse(res, 200, "Organization unit deleted", before);
 });
 
 export const moveOrganizationUnit = asyncHandler(async (req, res) => {

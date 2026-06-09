@@ -501,7 +501,7 @@ const EmployeeForm = ({
               </div>
               <div className="mt-4">
                 <TextArea
-                  label="Remarks / Notes"
+                  label="Remarks"
                   placeholder="Enter leave, training, look-after arrangement, additional charge, temporary attachment, or any other administrative note..."
                   {...register("remarks")}
                 />

@@ -1,16 +1,27 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { ArrowRight, BarChart3, Eye, EyeOff, Headphones, Lock, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowRight, BarChart3, Eye, EyeOff, Headphones, KeyRound, Lock, MailCheck, ShieldCheck, UserRound } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { getErrorMessage } from "@/utils/getErrorMessage";
+import { confirmActivationCode, forgotPasswordRequest, requestActivationCode, resetPasswordRequest } from "@/services/authService";
 import { toast } from "sonner";
 
 const LoginPage = () => {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
+  const [accountMode, setAccountMode] = useState("");
+  const [accountForm, setAccountForm] = useState({ email: "", code: "", password: "" });
   const [loading, setLoading] = useState(false);
+  const [accountLoading, setAccountLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [codeCooldown, setCodeCooldown] = useState(0);
+
+  useEffect(() => {
+    if (!codeCooldown) return undefined;
+    const timer = window.setTimeout(() => setCodeCooldown((value) => Math.max(value - 1, 0)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [codeCooldown]);
 
   if (isAuthenticated) return <Navigate to="/employees" replace />;
 
@@ -25,6 +36,59 @@ const LoginPage = () => {
       toast.error(getErrorMessage(error, "Unable to sign in"));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const setAccountValue = (key, value) => {
+    setAccountForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const showDevCode = (response) => {
+    const devCode = response?.data?.meta?.devCode || response?.data?.meta?.devActivationCode;
+    if (devCode) toast.info(`Development code: ${devCode}`);
+  };
+
+  const requestCode = async (purpose) => {
+    if (!accountForm.email.trim()) {
+      toast.error("Email is required");
+      return;
+    }
+    setAccountLoading(true);
+    try {
+      const response =
+        purpose === "activation"
+          ? await requestActivationCode({ email: accountForm.email })
+          : await forgotPasswordRequest({ email: accountForm.email });
+      toast.success(response.data.message || "Code sent");
+      showDevCode(response);
+      setCodeCooldown(45);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not send code"));
+    } finally {
+      setAccountLoading(false);
+    }
+  };
+
+  const submitAccountAction = async () => {
+    setAccountLoading(true);
+    try {
+      if (accountMode === "activate") {
+        const response = await confirmActivationCode({ email: accountForm.email, code: accountForm.code });
+        toast.success(response.data.message || "Account activated");
+        setAccountMode("");
+      } else {
+        const response = await resetPasswordRequest({
+          email: accountForm.email,
+          code: accountForm.code,
+          password: accountForm.password,
+        });
+        toast.success(response.data.message || "Password reset successful");
+        setAccountMode("");
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not complete request"));
+    } finally {
+      setAccountLoading(false);
     }
   };
 
@@ -154,6 +218,76 @@ const LoginPage = () => {
                 {loading ? "Signing in..." : "Sign In"}
               </button>
             </form>
+
+            <div className="mt-3 flex items-center justify-between gap-2 text-xs font-bold">
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                onClick={() => {
+                  setAccountMode(accountMode === "activate" ? "" : "activate");
+                  setAccountForm((current) => ({ ...current, email: current.email || form.email }));
+                  setCodeCooldown(0);
+                }}
+              >
+                <MailCheck className="h-4 w-4" />
+                Activate account
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                onClick={() => {
+                  setAccountMode(accountMode === "reset" ? "" : "reset");
+                  setAccountForm((current) => ({ ...current, email: current.email || form.email }));
+                  setCodeCooldown(0);
+                }}
+              >
+                <KeyRound className="h-4 w-4" />
+                Forgot password
+              </button>
+            </div>
+
+            {accountMode ? (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                <div className="grid gap-2">
+                  <input
+                    className="input-shell h-10 rounded-lg bg-white px-3 py-2 text-sm"
+                    type="email"
+                    value={accountForm.email}
+                    onChange={(event) => setAccountValue("email", event.target.value)}
+                    placeholder="Email"
+                  />
+                  <div className="grid grid-cols-[1fr_auto] gap-2">
+                    <input
+                      className="input-shell h-10 rounded-lg bg-white px-3 py-2 text-sm"
+                      value={accountForm.code}
+                      onChange={(event) => setAccountValue("code", event.target.value)}
+                      placeholder="6 digit code"
+                      inputMode="numeric"
+                    />
+                    <button
+                      type="button"
+                      className="btn-secondary h-10 rounded-lg px-3 py-2 text-xs"
+                      disabled={accountLoading || codeCooldown > 0}
+                      onClick={() => requestCode(accountMode === "activate" ? "activation" : "reset")}
+                    >
+                      {codeCooldown ? `Resend ${codeCooldown}s` : "Send code"}
+                    </button>
+                  </div>
+                  {accountMode === "reset" ? (
+                    <input
+                      className="input-shell h-10 rounded-lg bg-white px-3 py-2 text-sm"
+                      type="password"
+                      value={accountForm.password}
+                      onChange={(event) => setAccountValue("password", event.target.value)}
+                      placeholder="New password"
+                    />
+                  ) : null}
+                  <button type="button" className="btn-primary h-10 rounded-lg py-2 text-xs" disabled={accountLoading} onClick={submitAccountAction}>
+                    {accountLoading ? "Please wait..." : accountMode === "activate" ? "Activate" : "Reset Password"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-5 text-center">
               <Link to="/public/incumbency" className="text-sm font-bold text-primary hover:underline">

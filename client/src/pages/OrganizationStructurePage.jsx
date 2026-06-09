@@ -22,6 +22,7 @@ import SearchInput from "@/components/common/SearchInput";
 import StatusBadge from "@/components/common/StatusBadge";
 import OrganizationUnitForm, { organizationUnitTypeOptions } from "@/components/forms/OrganizationUnitForm";
 import { organizationUnitService } from "@/services/organizationUnitService";
+import { useAuth } from "@/hooks/useAuth";
 import { getErrorMessage } from "@/utils/getErrorMessage";
 import { flattenUnitTree, buildUnitLabel } from "@/utils/organizationUnit";
 import { notifyResourceChanged } from "@/utils/resourceEvents";
@@ -122,18 +123,26 @@ const OrganizationNode = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          {onEdit || onDelete || onAddChild || onMove || onQuickMove ? <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            {onAddChild ? (
             <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => onAddChild(node)}>
               <CopyPlus className="h-4 w-4" />
               Add Child
             </button>
+            ) : null}
+            {onEdit ? (
             <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => onEdit(node)}>
               Edit
             </button>
+            ) : null}
+            {onMove ? (
             <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => onMove(node)}>
               <Move className="h-4 w-4" />
               Move
             </button>
+            ) : null}
+            {onQuickMove ? (
+            <>
             <button type="button" className="btn-ghost px-3 py-2 text-xs" onClick={() => onQuickMove(node, "up")}>
               <ArrowUp className="h-4 w-4" />
               Up
@@ -142,11 +151,15 @@ const OrganizationNode = ({
               <ArrowDown className="h-4 w-4" />
               Down
             </button>
+            </>
+            ) : null}
+            {onDelete ? (
             <button type="button" className="btn-ghost px-3 py-2 text-xs text-danger" onClick={() => onDelete(node)}>
               <Trash2 className="h-4 w-4" />
               Delete
             </button>
-          </div>
+            ) : null}
+          </div> : null}
         </div>
       </motion.div>
 
@@ -181,6 +194,7 @@ const OrganizationNode = ({
 };
 
 const OrganizationStructurePage = () => {
+  const { user } = useAuth();
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -196,6 +210,7 @@ const OrganizationStructurePage = () => {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [moving, setMoving] = useState(false);
+  const canManageStructure = ["super_admin", "admin"].includes(user?.role);
 
   const flatUnits = useMemo(() => flattenUnitTree(units), [units]);
   const filteredUnits = useMemo(() => filterTree(units, searchTerm, typeFilter), [searchTerm, typeFilter, units]);
@@ -300,12 +315,12 @@ const OrganizationStructurePage = () => {
     setDeleting(true);
     try {
       await organizationUnitService.remove(confirmDelete.id);
-      toast.success("Organization unit deactivated successfully");
+      toast.success("Organization unit deleted successfully");
       setConfirmDelete(null);
       notifyResourceChanged("organization-units");
       await loadUnits();
     } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to deactivate organization unit"));
+      toast.error(getErrorMessage(error, "Failed to delete organization unit"));
     } finally {
       setDeleting(false);
     }
@@ -370,10 +385,10 @@ const OrganizationStructurePage = () => {
               <RefreshCw className="h-4 w-4" />
               Refresh
             </button>
-            <button type="button" className="btn-primary" onClick={openCreateTopLevel}>
+            {canManageStructure ? <button type="button" className="btn-primary" onClick={openCreateTopLevel}>
               <Plus className="h-4 w-4" />
               Add Top Level
-            </button>
+            </button> : null}
           </>
         }
       />
@@ -428,11 +443,11 @@ const OrganizationStructurePage = () => {
               depth={0}
               expandedIds={expandedIds}
               onToggle={toggleNode}
-              onAddChild={openCreateChild}
-              onEdit={openEdit}
-              onDelete={setConfirmDelete}
-              onMove={setMoveTarget}
-              onQuickMove={handleQuickMove}
+              onAddChild={canManageStructure ? openCreateChild : null}
+              onEdit={canManageStructure ? openEdit : null}
+              onDelete={canManageStructure ? setConfirmDelete : null}
+              onMove={canManageStructure ? setMoveTarget : null}
+              onQuickMove={canManageStructure ? handleQuickMove : null}
               searchActive={Boolean(searchTerm.trim() || typeFilter)}
             />
           ))
@@ -501,9 +516,9 @@ const OrganizationStructurePage = () => {
 
       <ConfirmDialog
         open={Boolean(confirmDelete)}
-        title="Deactivate organization unit"
-        description={`Deactivate ${confirmDelete?.name || "this unit"}? Child units or linked employees and seats must be cleared first.`}
-        confirmLabel="Deactivate"
+        title="Delete organization unit"
+        description={`Delete ${confirmDelete?.name || "this unit"}? Child units or linked employees and seats must be cleared first.`}
+        confirmLabel="Delete"
         loading={deleting}
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete(null)}

@@ -111,12 +111,12 @@ const DesignationsPage = () => {
     setDeleting(true);
     try {
       await designationService.remove(confirmDelete.id);
-      toast.success("Designation deactivated successfully");
+      toast.success("Designation deleted successfully");
       setConfirmDelete(null);
       notifyResourceChanged("designations");
       await loadDesignations(query());
     } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to deactivate designation"));
+      toast.error(getErrorMessage(error, "Failed to delete designation"));
     } finally {
       setDeleting(false);
     }
@@ -218,7 +218,7 @@ const DesignationsPage = () => {
               </button>
               <button type="button" className="btn-ghost px-3 py-2 text-xs text-danger" onClick={() => setConfirmDelete(row)}>
                 <Trash2 className="h-4 w-4" />
-                Deactivate
+                Delete
               </button>
             </div>
           )}
@@ -243,9 +243,9 @@ const DesignationsPage = () => {
 
       <ConfirmDialog
         open={Boolean(confirmDelete)}
-        title="Deactivate designation"
-        description={`Deactivate ${confirmDelete?.name || "this designation"}? Linked seats or employees will prevent deletion if they still exist.`}
-        confirmLabel="Deactivate"
+        title="Delete designation"
+        description={`Delete ${confirmDelete?.name || "this designation"}? Linked seats or employees will prevent deletion if they still exist.`}
+        confirmLabel="Delete"
         loading={deleting}
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete(null)}

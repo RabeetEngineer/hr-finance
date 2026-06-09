@@ -1,37 +1,47 @@
 import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Eye, KeyRound, Plus } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
 import DataTable from "@/components/common/DataTable";
 import StatusBadge from "@/components/common/StatusBadge";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
+import Modal from "@/components/common/Modal";
 import UserForm from "@/components/forms/UserForm";
+import ActivityTimeline from "@/components/common/ActivityTimeline";
 import { userService } from "@/services/userService";
 import { activityLogService } from "@/services/activityLogService";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/utils/getErrorMessage";
 import { notifyResourceChanged } from "@/utils/resourceEvents";
 import { formatDateTime } from "@/utils/formatDate";
+import { useAuth } from "@/hooks/useAuth";
 
 const roleCards = [
-  { role: "super_admin", title: "Super Admin", detail: "Users, roles, structure, rows, delete, settings, logs" },
-  { role: "admin", title: "Admin", detail: "Structure, row edit, delete, settings" },
-  { role: "data_entry", title: "Data Entry", detail: "Add and edit staff rows only" },
-  { role: "viewer", title: "Viewer", detail: "Read and print only" },
+  { role: "super_admin", title: "Super Admin", detail: "Full system access, users, roles, settings, imports, logs" },
+  { role: "admin", title: "Admin", detail: "Structure, employees, lists, dashboard, import/export" },
+  { role: "data_entry", title: "Data Entry", detail: "Add, edit, and transfer employee rows" },
+  { role: "viewer", title: "Viewer", detail: "Read-only dashboard, lists, and incumbency sheet" },
 ];
 
 const UsersRolesPage = () => {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [viewTarget, setViewTarget] = useState(null);
+  const [actionLoading, setActionLoading] = useState("");
 
   const loadUsers = async () => {
     setLoading(true);
     try {
       const [usersResponse, logsResponse] = await Promise.all([
         userService.list({ limit: 500, sort: "role fullName" }),
-        activityLogService.list({ limit: 20, sort: "-createdAt" }),
+        activityLogService.recent({ limit: 20 }),
       ]);
       setUsers(usersResponse.data.data || []);
       setActivityLogs(logsResponse.data.data || []);
@@ -46,6 +56,16 @@ const UsersRolesPage = () => {
     loadUsers();
   }, []);
 
+  const openCreate = () => {
+    setEditing(null);
+    setEditorOpen(true);
+  };
+
+  const openEdit = (row) => {
+    setEditing(row);
+    setEditorOpen(true);
+  };
+
   const handleSubmit = async (payload) => {
     try {
       if (editing) {
@@ -55,6 +75,7 @@ const UsersRolesPage = () => {
         await userService.create(payload);
         toast.success("User created");
       }
+      setEditorOpen(false);
       setEditing(null);
       notifyResourceChanged("users");
       await loadUsers();
@@ -71,12 +92,43 @@ const UsersRolesPage = () => {
       toast.success("User deleted");
       setConfirmDelete(null);
       notifyResourceChanged("users");
-      loadUsers();
+      await loadUsers();
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to delete user"));
     } finally {
       setDeleting(false);
     }
+  };
+
+  const runUserAction = async (key, action, successMessage) => {
+    setActionLoading(key);
+    try {
+      const response = await action();
+      toast.success(response.data.message || successMessage);
+      const devCode = response.data.meta?.devActivationCode || response.data.meta?.devCode;
+      if (devCode) toast.info(`Development code: ${devCode}`);
+      notifyResourceChanged("users");
+      await loadUsers();
+    } catch (error) {
+      toast.error(getErrorMessage(error, successMessage));
+    } finally {
+      setActionLoading("");
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetTarget) return;
+    if (resetPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    await runUserAction(
+      `reset-${resetTarget.id}`,
+      () => userService.resetPassword(resetTarget.id, { password: resetPassword }),
+      "Password reset"
+    );
+    setResetTarget(null);
+    setResetPassword("");
   };
 
   const roleCounts = useMemo(
@@ -95,29 +147,33 @@ const UsersRolesPage = () => {
       render: (row) => (
         <div>
           <p className="font-semibold">{row.fullName}</p>
-          <p className="text-xs text-muted-foreground">{row.email}</p>
+          <p className="text-xs text-muted-foreground">{row.id === currentUser?.id ? "Current account" : "Managed user"}</p>
         </div>
       ),
     },
+    { key: "email", header: "Email" },
+    { key: "mobile", header: "Mobile", render: (row) => row.mobile || "-" },
     { key: "role", header: "Role", render: (row) => <StatusBadge value={row.role} /> },
-    { key: "isActive", header: "Status", render: (row) => <StatusBadge value={String(row.isActive)} /> },
-    {
-      key: "lastLoginAt",
-      header: "Last Login",
-      render: (row) => formatDateTime(row.lastLoginAt),
-    },
-    {
-      key: "updatedAt",
-      header: "Updated",
-      render: (row) => formatDateTime(row.updatedAt),
-    },
+    { key: "isActive", header: "Status", render: (row) => <StatusBadge value={row.isActive ? "active" : "inactive"} /> },
+    { key: "isEmailVerified", header: "Email Verified", render: (row) => <StatusBadge value={row.isEmailVerified ? "verified" : "pending"} /> },
+    { key: "lastLoginAt", header: "Last Login", render: (row) => formatDateTime(row.lastLoginAt) },
+    { key: "updatedAt", header: "Updated", render: (row) => formatDateTime(row.updatedAt) },
   ];
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Users & Roles" description="Assign clean access levels and review recent system activity." />
+      <PageHeader
+        title="Users & Roles"
+        description="Manage verified accounts, role permissions, and recent user activity."
+        actions={
+          <button type="button" className="btn-primary" onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Create User
+          </button>
+        }
+      />
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {roleCards.map((card) => (
           <div key={card.role} className="rounded-lg border border-border bg-surface px-4 py-3">
             <div className="flex items-center justify-between gap-2">
@@ -129,95 +185,119 @@ const UsersRolesPage = () => {
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[390px_1fr]">
-        <section className="rounded-lg border border-border bg-surface p-4 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-bold">{editing ? "Edit User" : "Create User"}</h3>
-              <p className="text-sm text-muted-foreground">Login, role, and active status.</p>
-            </div>
-            {editing ? (
-              <button type="button" className="btn-ghost" onClick={() => setEditing(null)}>
-                Reset
-              </button>
-            ) : null}
-          </div>
-          <UserForm
-            defaultValues={editing || undefined}
-            onSubmit={handleSubmit}
-            submitLabel={editing ? "Update User" : "Create User"}
-            isEdit={Boolean(editing)}
-          />
-        </section>
-
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <section className="rounded-lg border border-border bg-surface p-3 shadow-sm">
           <DataTable
             loading={loading}
             data={users}
             columns={columns}
-            actions={(row) => (
-              <div className="flex items-center justify-end gap-2">
-                <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => setEditing(row)}>
-                  Edit
-                </button>
-                <button type="button" className="btn-ghost px-3 py-2 text-xs text-danger" onClick={() => setConfirmDelete(row)}>
-                  Delete
-                </button>
-              </div>
-            )}
+            actions={(row) => {
+              const isSelf = row.id === currentUser?.id;
+              return (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => setViewTarget(row)}>
+                    <Eye className="h-3.5 w-3.5" />
+                    View
+                  </button>
+                  <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => openEdit(row)}>
+                    Edit
+                  </button>
+                  {!row.isEmailVerified ? (
+                    <button
+                      type="button"
+                      className="btn-secondary px-3 py-2 text-xs"
+                      disabled={Boolean(actionLoading)}
+                      onClick={() => runUserAction(`activate-${row.id}`, () => userService.activate(row.id), "User activated")}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Activate
+                    </button>
+                  ) : null}
+                  {!row.isEmailVerified ? (
+                    <button
+                      type="button"
+                      className="btn-secondary px-3 py-2 text-xs"
+                      disabled={Boolean(actionLoading)}
+                      onClick={() => runUserAction(`send-${row.id}`, () => userService.resendActivation(row.id), "Activation code sent")}
+                    >
+                      Send Code
+                    </button>
+                  ) : null}
+                  <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => setResetTarget(row)}>
+                    <KeyRound className="h-3.5 w-3.5" />
+                    Reset
+                  </button>
+                  <button type="button" className="btn-ghost px-3 py-2 text-xs text-danger" disabled={isSelf} onClick={() => setConfirmDelete(row)}>
+                    Delete
+                  </button>
+                </div>
+              );
+            }}
             emptyState="No users have been created yet."
           />
         </section>
+
+        <ActivityTimeline logs={activityLogs} loading={loading} compact />
       </div>
 
-      <section className="rounded-lg border border-border bg-surface p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-bold">Recent Activity</h3>
-            <p className="text-sm text-muted-foreground">Latest creates, edits, deletes, logins, and role changes.</p>
+      <Modal
+        open={editorOpen}
+        title={editing ? "Edit User" : "Create User"}
+        description={editing ? "Update profile, role, and account status." : "Create a real email account and send an activation code."}
+        onClose={() => {
+          setEditorOpen(false);
+          setEditing(null);
+        }}
+        size="lg"
+      >
+        <UserForm
+          defaultValues={editing || undefined}
+          onSubmit={handleSubmit}
+          submitLabel={editing ? "Update User" : "Create User"}
+          isEdit={Boolean(editing)}
+        />
+      </Modal>
+
+      <Modal open={Boolean(resetTarget)} title="Reset Password" description={`Set a new password for ${resetTarget?.fullName || "this user"}.`} onClose={() => setResetTarget(null)} size="sm">
+        <div className="space-y-4">
+          <input className="input-shell" type="password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} placeholder="New password" />
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn-secondary" onClick={() => setResetTarget(null)}>
+              Cancel
+            </button>
+            <button type="button" className="btn-primary" disabled={Boolean(actionLoading)} onClick={handleResetPassword}>
+              Reset Password
+            </button>
           </div>
         </div>
-        <div className="overflow-auto">
-          <table className="incumbency-table w-full min-w-[760px] border-collapse text-xs">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>User</th>
-                <th>Action</th>
-                <th>Area</th>
-                <th>Detail</th>
-              </tr>
-            </thead>
-            <tbody>
-              {activityLogs.length ? (
-                activityLogs.map((log) => (
-                  <tr key={log.id}>
-                    <td>{formatDateTime(log.createdAt)}</td>
-                    <td>
-                      <span className="font-semibold">{log.actorUser?.fullName || "System"}</span>
-                      {log.actorUser?.role ? <span className="ml-2 text-muted-foreground">{log.actorUser.role.replaceAll("_", " ")}</span> : null}
-                    </td>
-                    <td className="capitalize">{log.action}</td>
-                    <td>{log.entityType}</td>
-                    <td>{log.summary}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-muted-foreground">
-                    No recent activity found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      </Modal>
+
+      <Modal open={Boolean(viewTarget)} title="User Details" description="Account profile and verification status." onClose={() => setViewTarget(null)} size="sm">
+        {viewTarget ? (
+          <div className="space-y-3 text-sm">
+            {[
+              ["Name", viewTarget.fullName],
+              ["Email", viewTarget.email],
+              ["Mobile", viewTarget.mobile || "-"],
+              ["Role", viewTarget.role.replaceAll("_", " ")],
+              ["Active", viewTarget.isActive ? "Yes" : "No"],
+              ["Email Verified", viewTarget.isEmailVerified ? "Yes" : "No"],
+              ["Last Login", formatDateTime(viewTarget.lastLoginAt)],
+              ["Updated", formatDateTime(viewTarget.updatedAt)],
+            ].map(([label, value]) => (
+              <div key={label} className="flex justify-between gap-4 rounded-md bg-surface-2 px-3 py-2">
+                <span className="font-bold text-muted-foreground">{label}</span>
+                <span className="text-right font-semibold capitalize">{value}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </Modal>
 
       <ConfirmDialog
         open={Boolean(confirmDelete)}
         title="Delete user"
-        description={`Delete ${confirmDelete?.fullName || "this user"} from the system?`}
+        description={`Delete ${confirmDelete?.fullName || "this user"} from the system? This action cannot be undone.`}
         confirmLabel="Delete"
         loading={deleting}
         onConfirm={handleDelete}

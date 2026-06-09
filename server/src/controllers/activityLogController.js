@@ -54,3 +54,15 @@ export const listActivityLogs = asyncHandler(async (req, res) => {
     { page, limit, total, pages: Math.ceil(total / limit) || 1 }
   );
 });
+
+export const recentActivityTimeline = asyncHandler(async (_req, res) => {
+  const logs = await ActivityLog.find({
+    entityType: { $in: ["Employee", "Designation", "OrganizationUnit", "User", "Seat", "TransferRecord"] },
+  })
+    .populate("actorUser", "fullName email role")
+    .sort({ createdAt: -1 })
+    .limit(30)
+    .lean();
+
+  return apiResponse(res, 200, "Recent activity fetched", logs.map(sanitize));
+});

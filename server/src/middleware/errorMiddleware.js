@@ -15,6 +15,17 @@ export const errorHandler = (err, _req, res, _next) => {
     });
   }
 
+  if (err.name === "ValidationError") {
+    const message = Object.values(err.errors || {})
+      .map((error) => error.message)
+      .filter(Boolean)
+      .join(", ");
+    return res.status(400).json({
+      success: false,
+      message: message || "Validation failed",
+    });
+  }
+
   if (err.code === 11000) {
     const field = Object.keys(err.keyValue || {})[0] || "field";
     return res.status(409).json({
@@ -29,4 +40,3 @@ export const errorHandler = (err, _req, res, _next) => {
     stack: process.env.NODE_ENV === "production" ? undefined : err.stack,
   });
 };
-

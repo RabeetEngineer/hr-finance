@@ -32,6 +32,14 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+const RoleRoute = ({ roles, children }) => {
+  const { user } = useAuth();
+  if (!roles.includes(user?.role)) {
+    return <Navigate to="/employees" replace />;
+  }
+  return children;
+};
+
 const App = () => {
   return (
     <Routes>
@@ -68,8 +76,8 @@ const App = () => {
         <Route path="/transfers" element={<Navigate to="/employees" replace />} />
         <Route path="/leave" element={<Navigate to="/employees" replace />} />
         <Route path="/reports" element={<Navigate to="/employees" replace />} />
-        <Route path="/users-roles" element={<UsersRolesPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/users-roles" element={<RoleRoute roles={["super_admin"]}><UsersRolesPage /></RoleRoute>} />
+        <Route path="/settings" element={<RoleRoute roles={["super_admin", "admin"]}><SettingsPage /></RoleRoute>} />
       </Route>
       <Route path="*" element={<Navigate to="/employees" replace />} />
     </Routes>

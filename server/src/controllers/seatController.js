@@ -2,6 +2,8 @@ import mongoose from "mongoose";
 import Seat from "../models/Seat.js";
 import Employee from "../models/Employee.js";
 import AdditionalCharge from "../models/AdditionalCharge.js";
+import PostingHistory from "../models/PostingHistory.js";
+import TransferRecord from "../models/TransferRecord.js";
 import Wing from "../models/Wing.js";
 import OfficeSection from "../models/OfficeSection.js";
 import Designation from "../models/Designation.js";
@@ -341,23 +343,28 @@ export const deleteSeat = asyncHandler(async (req, res) => {
   if (!seat) throw new AppError("Seat not found", 404);
 
   if (seat.currentEmployee || seat.additionalChargeHolder) {
-    throw new AppError("Seat cannot be deactivated while an employee or additional charge holder is linked to it", 409);
+    throw new AppError("Seat cannot be deleted while an employee or additional charge holder is linked to it", 409);
+  }
+  const [postingCount, transferCount] = await Promise.all([
+    PostingHistory.countDocuments({ $or: [{ fromSeat: seat._id }, { toSeat: seat._id }] }),
+    TransferRecord.countDocuments({ $or: [{ fromSeat: seat._id }, { toSeat: seat._id }] }),
+  ]);
+  if (postingCount || transferCount) {
+    throw new AppError("Seat cannot be deleted because posting or transfer history is linked to it", 409);
   }
 
   const before = shape(seat);
-  seat.isActive = false;
-  seat.seatStatus = "vacant";
-  await seat.save();
+  await AdditionalCharge.deleteMany({ vacantSeat: seat._id });
+  await Seat.deleteOne({ _id: seat._id });
 
   await logActivity({
     actorUser: req.user?._id,
-    action: "deactivate",
+    action: "delete",
     entityType: "Seat",
     entityId: seat._id,
-    summary: `Deactivated seat ${seat.seatTitle}`,
+    summary: `Deleted seat ${seat.seatTitle}`,
     before,
-    after: shape(seat),
   });
 
-  return apiResponse(res, 200, "Seat deactivated", shape(seat));
+  return apiResponse(res, 200, "Seat deleted", before);
 });

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Crown, FileDown, Pencil, Plus, Printer, RefreshCw, Save, Search, Star, Trash2, X } from "lucide-react";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import Modal from "@/components/common/Modal";
+import QuickStats from "@/components/common/QuickStats";
 import { employeeService } from "@/services/employeeService";
 import { designationService } from "@/services/designationService";
 import { organizationUnitService } from "@/services/organizationUnitService";
@@ -10,7 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { formatDate } from "@/utils/formatDate";
 import { getErrorMessage } from "@/utils/getErrorMessage";
 import { applyUiSettings } from "@/utils/applyUiSettings";
-import { notifyResourceChanged, subscribeResourceChanged } from "@/utils/resourceEvents";
+import { subscribeResourceChanged } from "@/utils/resourceEvents";
 import { toast } from "sonner";
 
 const blankForm = {
@@ -59,7 +60,7 @@ const printColumnOptions = [
   { key: "sectionSerial", label: "Sr.#" },
   { key: "name", label: "Name" },
   { key: "fatherName", label: "Father Name" },
-  { key: "remarks", label: "Remarks / Notes" },
+  { key: "remarks", label: "Remarks" },
   { key: "designation", label: "Designation" },
   { key: "serviceCadre", label: "Service/Cadre" },
   { key: "section", label: "Section" },
@@ -76,6 +77,23 @@ const defaultPrintColumns = ["total", "name", "designation", "section"];
 const screenColumnOptions = printColumnOptions;
 const defaultScreenColumns = ["sectionSerial", "name", "remarks", "designation"];
 const columnDefaultsVersion = 3;
+const columnWidthMap = {
+  total: "4.5rem",
+  sectionSerial: "4.5rem",
+  name: "14rem",
+  fatherName: "12rem",
+  remarks: "14rem",
+  designation: "14rem",
+  serviceCadre: "11rem",
+  section: "12rem",
+  personnelNumber: "9rem",
+  cnic: "10rem",
+  mobileNumber: "9rem",
+  dateOfBirth: "8rem",
+  joining: "8rem",
+  gender: "7rem",
+  status: "8rem",
+};
 
 const savedColumnSetting = (key, fallback) => {
   try {
@@ -148,24 +166,6 @@ const fetchEmployeesForExport = async (params = {}) => {
   return rows;
 };
 
-const employeeSearchText = (employee) =>
-  [
-    employee.fullName,
-    employee.fatherName,
-    employee.designation?.name,
-    employee.serviceCadre,
-    employee.currentOfficeSection?.name,
-    employee.currentOfficeSection?.code,
-    employee.personnelNumber,
-    employee.cnic,
-    employee.mobileNumber,
-    employee.gender,
-    employee.remarks,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
 const compareText = (a, b) => clean(a).localeCompare(clean(b), undefined, { numeric: true, sensitivity: "base" });
 const statusLabel = (value) => {
   const labels = {
@@ -189,6 +189,17 @@ const normalizeSearch = (value) =>
     .replace(/\bfin\.?\b/g, "finance")
     .replace(/\s+/g, " ")
     .trim();
+
+const useDebouncedValue = (value, delay = 300) => {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+
+  return debounced;
+};
 
 const MultiSelect = ({ label, options, values, onChange, maxVisible = 2, summaryMode = "names" }) => {
   const [open, setOpen] = useState(false);
@@ -369,6 +380,7 @@ const EmployeesPage = ({ publicMode = false }) => {
   const [uiSettings, setUiSettings] = useState(defaultUiSettings);
   const employeeRequestRef = useRef(0);
   const sectionCountRequestRef = useRef(0);
+  const debouncedSearch = useDebouncedValue(filters.q, 300);
 
   useEffect(() => {
     const loadSettings = () => setUiSettings({ ...defaultUiSettings, ...JSON.parse(localStorage.getItem("hrf_ui_settings") || "{}") });
@@ -398,14 +410,14 @@ const EmployeesPage = ({ publicMode = false }) => {
         limit: filters.pageSize,
         sort: sortMap[filters.sort] || "sortOrder fullName",
         status: "active,vacant",
-        q: clean(filters.q) || undefined,
+        q: clean(debouncedSearch) || undefined,
         designationIds: filters.designations.length ? filters.designations.join(",") : undefined,
         sectionIds: filters.sections.length ? filters.sections.join(",") : undefined,
         gender: filters.gender || undefined,
         ...overrides,
       };
     },
-    [filters, page]
+    [debouncedSearch, filters.designations, filters.gender, filters.pageSize, filters.sections, filters.sort, page]
   );
 
   const loadMasterData = useCallback(async () => {
@@ -488,6 +500,10 @@ const EmployeesPage = ({ publicMode = false }) => {
     return selected.length ? selected : screenColumnOptions.filter((option) => defaultScreenColumns.includes(option.key));
   }, [screenColumns]);
   const tableColSpan = visibleScreenColumns.length + (showActions ? 1 : 0);
+  const visibleColumnTemplate = useMemo(
+    () => visibleScreenColumns.map((column) => columnWidthMap[column.key] || "10rem"),
+    [visibleScreenColumns]
+  );
 
   const updateFilters = (patch) => {
     setPage(1);
@@ -815,6 +831,8 @@ const EmployeesPage = ({ publicMode = false }) => {
   const buildEmployeePayload = async () => {
     const fullName = clean(form.fullName);
     if (!fullName) throw new Error("Name is required");
+    const normalizedCnic = clean(form.cnic).replace(/\D/g, "");
+    if (normalizedCnic && normalizedCnic.length !== 13) throw new Error("CNIC must contain exactly 13 digits");
 
     const designation = await ensureDesignation(form.designationName);
     const currentOfficeSection = await ensureSection(form.sectionName);
@@ -827,7 +845,7 @@ const EmployeesPage = ({ publicMode = false }) => {
       currentOfficeSection,
       currentSeat: null,
       personnelNumber: clean(form.personnelNumber) || undefined,
-      cnic: clean(form.cnic) || undefined,
+      cnic: normalizedCnic || undefined,
       mobileNumber: clean(form.mobileNumber) || undefined,
       dateOfBirth: form.dateOfBirth || undefined,
       dateOfJoiningGovernmentService: form.joiningDate || undefined,
@@ -855,7 +873,6 @@ const EmployeesPage = ({ publicMode = false }) => {
       }
 
       setFormOpen(false);
-      notifyResourceChanged("employees");
       await reloadDataInPlace();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not save row"));
@@ -871,7 +888,6 @@ const EmployeesPage = ({ publicMode = false }) => {
       await employeeService.remove(getId(deleteTarget));
       setDeleteTarget(null);
       toast.success("Row deleted");
-      notifyResourceChanged("employees");
       await reloadDataInPlace();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not delete row"));
@@ -897,7 +913,6 @@ const EmployeesPage = ({ publicMode = false }) => {
       await Promise.all(
         orderedRows.map((employee, index) => employeeService.update(getId(employee), { sortOrder: (index + 1) * 10 }))
       );
-      notifyResourceChanged("employees");
       await reloadDataInPlace();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not move row"));
@@ -911,7 +926,6 @@ const EmployeesPage = ({ publicMode = false }) => {
     try {
       await employeeService.update(getId(employee), { isOfficeHead: !employee.isOfficeHead });
       toast.success(employee.isOfficeHead ? "Office head mark removed" : "Office head highlighted");
-      notifyResourceChanged("employees");
       await reloadDataInPlace();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not update office head"));
@@ -940,7 +954,6 @@ const EmployeesPage = ({ publicMode = false }) => {
       await organizationUnitService.update(renamingSection.id, { name: trimmed, code: clean(nextSectionCode) });
       toast.success("Section renamed");
       setRenamingSection(null);
-      notifyResourceChanged("organization-units");
       await reloadDataInPlace();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not rename section"));
@@ -967,7 +980,6 @@ const EmployeesPage = ({ publicMode = false }) => {
       });
       toast.success("Section added");
       setSectionFormOpen(false);
-      notifyResourceChanged("organization-units");
       await reloadDataInPlace();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not add section"));
@@ -1007,7 +1019,7 @@ const EmployeesPage = ({ publicMode = false }) => {
   const printSheet = () => window.print();
 
   return (
-    <div className="space-y-3 print:block">
+    <div className={publicMode ? "mx-auto max-w-[1600px] space-y-3 px-3 py-3 print:block sm:px-5 lg:px-6" : "space-y-3 print:block"}>
       <div className="print-header hidden">
         <h1>{uiSettings.printTitle || "Incumbency Position"}</h1>
         <p>
@@ -1065,7 +1077,7 @@ const EmployeesPage = ({ publicMode = false }) => {
               className="input-shell h-10 rounded-lg py-2 pl-9 pr-3"
               value={filters.q}
               onChange={(event) => updateFilters({ q: event.target.value })}
-              placeholder="Search name, CNIC, designation, section, cell..."
+              placeholder="Search any column including remarks, CNIC, personnel no., designation, section..."
             />
           </label>
           <MultiSelect label="Designations" options={designationOptions} values={filters.designations} onChange={(values) => updateFilters({ designations: values })} />
@@ -1125,6 +1137,12 @@ const EmployeesPage = ({ publicMode = false }) => {
           <>
           <div className="sheet-scroll hidden md:block">
             <table className="incumbency-table w-full min-w-fit border-collapse text-xs">
+              <colgroup>
+                {visibleColumnTemplate.map((width, index) => (
+                  <col key={`${visibleScreenColumns[index]?.key || "column"}-${index}`} style={{ width }} />
+                ))}
+                {showActions ? <col style={{ width: "8rem" }} /> : null}
+              </colgroup>
               <thead>
                 <tr>
                   {visibleScreenColumns.map((column) => (
@@ -1169,6 +1187,7 @@ const EmployeesPage = ({ publicMode = false }) => {
                                 </span>
                               ) : null}
                             </div>
+                            <QuickStats rows={row.section.rows} />
                           </td>
                         </tr>
                       );
@@ -1186,7 +1205,18 @@ const EmployeesPage = ({ publicMode = false }) => {
                     return (
                       <tr key={getId(employee)} className={employee.isOfficeHead ? "office-head-row" : employee.employmentStatus === "vacant" ? "vacant-row" : undefined}>
                         {visibleScreenColumns.map((column) => (
-                          <td key={column.key} className={column.key === "name" ? "font-semibold text-foreground" : column.key === "gender" ? "capitalize" : undefined}>
+                          <td
+                            key={column.key}
+                            className={
+                              column.key === "name"
+                                ? "font-semibold text-foreground"
+                                : column.key === "gender"
+                                ? "capitalize"
+                                : column.key === "remarks"
+                                ? "max-w-[14rem] whitespace-normal break-words text-slate-700"
+                                : undefined
+                            }
+                          >
                             {column.key === "name" ? (
                               <span className="inline-flex items-center gap-1.5">
                                 {employee.isOfficeHead ? <Crown className="h-3.5 w-3.5 text-amber-600" /> : null}
@@ -1248,6 +1278,7 @@ const EmployeesPage = ({ publicMode = false }) => {
                   return (
                     <div key={`mobile-section-${row.section.id}-${index}`} className="rounded-xl border border-border bg-surface-2 px-3 py-3">
                       <p className="text-base font-black">{row.section.name}</p>
+                      <QuickStats rows={row.section.rows} />
                     </div>
                   );
                 }
@@ -1326,6 +1357,11 @@ const EmployeesPage = ({ publicMode = false }) => {
 
       <div className="print-only">
         <table className="incumbency-table w-full border-collapse text-xs">
+          <colgroup>
+            {selectedPrintOptions.map((column) => (
+              <col key={`print-col-${column.key}`} style={{ width: columnWidthMap[column.key] || "10rem" }} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
               {selectedPrintOptions.map((column) => (
@@ -1472,7 +1508,7 @@ const EmployeesPage = ({ publicMode = false }) => {
           ) : null}
         </div>
         <label className="mt-4 block">
-          <span className="label-shell">Remarks / Notes</span>
+          <span className="label-shell">Remarks</span>
           <textarea
             className="input-shell min-h-28"
             placeholder="Enter leave, training, look-after arrangement, additional charge, temporary attachment, or any other administrative note..."

@@ -201,7 +201,7 @@ const OldEmployeesPage = () => {
                 <th>Status</th>
                 <th>Exit Date</th>
                 <th>Transferred To</th>
-                <th>Remarks / Notes</th>
+                <th>Remarks</th>
                 <th>Personnel No.</th>
                 <th>CNIC</th>
                 {(canEdit || canDelete) ? <th className="text-right">Actions</th> : null}
@@ -308,7 +308,7 @@ const OldEmployeesPage = () => {
           </label>
         </div>
         <label className="mt-4 block">
-          <span className="label-shell">Remarks / Notes</span>
+          <span className="label-shell">Remarks</span>
           <textarea
             className="input-shell min-h-28"
             placeholder="Enter leave, training, look-after arrangement, additional charge, temporary attachment, or any other administrative note..."
