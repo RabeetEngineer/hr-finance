@@ -181,13 +181,14 @@ const evaluateComposition = (employees, units) => {
       const sectionText = normalize(`${group.section} ${group.code} ${group.path}`);
       const isOfficerOffice = sectionText.startsWith("o o ") || sectionText.includes("finance secretary") || sectionText.includes("additional finance secretary") || sectionText.includes("deputy secretary") || group.type === "office";
       const designationCounts = new Map();
-      group.rows.forEach((employee) => {
+      const orderedRows = [...group.rows].sort(
+        (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || String(a.fullName || "").localeCompare(String(b.fullName || ""))
+      );
+      orderedRows.forEach((employee) => {
         const name = designationName(employee) || "Unspecified";
         designationCounts.set(name, Number(designationCounts.get(name) || 0) + 1);
       });
-      const designationBreakdown = [...designationCounts.entries()]
-        .map(([designation, count]) => ({ designation, count }))
-        .sort((a, b) => b.count - a.count || a.designation.localeCompare(b.designation));
+      const designationBreakdown = [...designationCounts.entries()].map(([designation, count]) => ({ designation, count }));
 
       if (isOfficerOffice) {
         return {

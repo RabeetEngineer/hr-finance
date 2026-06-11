@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Plus, RefreshCw, UploadCloud } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
@@ -7,13 +7,87 @@ import { getErrorMessage } from "@/utils/getErrorMessage";
 import { notifyResourceChanged } from "@/utils/resourceEvents";
 import { toast } from "sonner";
 
-const sampleText = `Name\tDesignation
-INCUMBENCY POSITION\t
-O/O FINANCE SECRETARY\t
-Mr. Mujahid Sherdil\tFinance Secretary
-Mr. Mujahid Hussain\tProgrammer
-BUDGET SECTION-I\t
-Ms. Misbah Asghar\tBudget Officer`;
+const sampleText = `Name\tDesignation\tOffice Name\tCNIC\tCell\tDOB\tAddress
+Mr. Mujahid Sherdil\tFinance Secretary\tO/O FINANCE SECRETARY\t\t0300 0000000\t01/01/1970\tLahore
+Vacant\tProgrammer\tO/O FINANCE SECRETARY\t\t\t\t
+\tAssistant\tBUDGET SECTION-I\t\t\t\t
+Ms. Misbah Asghar\tBudget Officer\tBUDGET SECTION-I\t\t0300 1111111\t05/08/1985\tLahore`;
+
+const fieldOptions = [
+  { key: "", label: "Do not import" },
+  { key: "fullName", label: "Name" },
+  { key: "designationName", label: "Designation" },
+  { key: "officeName", label: "Office / Section" },
+  { key: "fatherName", label: "Father Name" },
+  { key: "cnic", label: "CNIC" },
+  { key: "mobileNumber", label: "Cell / Mobile" },
+  { key: "dateOfBirth", label: "DOB" },
+  { key: "address", label: "Address" },
+  { key: "personnelNumber", label: "Personnel No." },
+  { key: "serviceCadre", label: "Service / Cadre" },
+  { key: "gender", label: "Gender" },
+  { key: "email", label: "Email" },
+  { key: "district", label: "District" },
+  { key: "domicile", label: "Domicile" },
+  { key: "qualification", label: "Qualification" },
+  { key: "joiningDate", label: "Joining Date" },
+  { key: "employmentStatus", label: "Status" },
+  { key: "remarks", label: "Remarks" },
+];
+
+const fieldAliases = {
+  fullName: ["name", "employee name", "full name", "officer name", "official name"],
+  designationName: ["designation", "desgination", "post", "job title", "title"],
+  officeName: ["office", "office name", "section", "section name", "office section", "department"],
+  fatherName: ["father", "father name"],
+  cnic: ["cnic", "nic", "id card"],
+  mobileNumber: ["cell", "cell no", "cell number", "mobile", "mobile number", "phone"],
+  dateOfBirth: ["dob", "date of birth", "birth date"],
+  address: ["address"],
+  personnelNumber: ["personnel", "personnel no", "personnel number", "employee no"],
+  serviceCadre: ["cadre", "service cadre", "service"],
+  gender: ["gender", "sex"],
+  email: ["email", "email address"],
+  district: ["district"],
+  domicile: ["domicile"],
+  qualification: ["qualification", "education"],
+  joiningDate: ["joining", "joining date", "date of joining", "doj"],
+  employmentStatus: ["status", "employment status", "incumbency action"],
+  remarks: ["remarks", "remark", "notes"],
+};
+
+const clean = (value) => String(value || "").trim();
+const headerKey = (value) => clean(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+const splitRow = (line) => {
+  const text = String(line || "");
+  if (text.includes("\t")) return text.split("\t");
+  const cells = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current);
+  return cells;
+};
+
+const inferField = (label) => {
+  const normalized = headerKey(label);
+  return Object.entries(fieldAliases).find(([, aliases]) => aliases.some((alias) => alias === normalized || normalized.includes(alias)))?.[0] || "";
+};
 
 const Metric = ({ label, value, hint }) => (
   <div className="rounded-lg border border-border bg-surface px-4 py-3">
@@ -54,6 +128,29 @@ const ImportIncumbencyPage = () => {
   const [committing, setCommitting] = useState(false);
   const [autoCreateDesignations, setAutoCreateDesignations] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [columnMapping, setColumnMapping] = useState({});
+
+  const pastedColumns = useMemo(() => {
+    const firstRow = rawText
+      .replace(/\r/g, "")
+      .split("\n")
+      .map(splitRow)
+      .find((cells) => cells.some((cell) => clean(cell)));
+    return (firstRow || []).map((cell, index) => ({ index, label: clean(cell) || `Column ${index + 1}`, inferredField: inferField(cell) }));
+  }, [rawText]);
+
+  const mappingSignature = pastedColumns.map((column) => `${column.index}:${column.label}`).join("|");
+
+  useEffect(() => {
+    const next = {};
+    pastedColumns.forEach((column) => {
+      if (column.inferredField && next[column.inferredField] === undefined) next[column.inferredField] = column.index;
+    });
+    setColumnMapping(next);
+  }, [mappingSignature]);
+
+  const mappedFieldSet = useMemo(() => new Set(Object.keys(columnMapping).filter((key) => columnMapping[key] !== "" && columnMapping[key] !== undefined)), [columnMapping]);
+  const requiredMappingReady = columnMapping.designationName !== undefined && columnMapping.officeName !== undefined;
 
   const canImport = useMemo(() => {
     if (!preview) return false;
@@ -67,10 +164,14 @@ const ImportIncumbencyPage = () => {
       toast.error("Paste Google Sheets data first");
       return;
     }
+    if (!requiredMappingReady) {
+      toast.error("Map Designation and Office / Section columns first");
+      return;
+    }
 
     setLoading(true);
     try {
-      const response = await importService.previewIncumbency(rawText);
+      const response = await importService.previewIncumbency(rawText, columnMapping);
       setPreview(response.data.data);
       setImportResult(null);
       toast.success("Preview ready");
@@ -84,7 +185,7 @@ const ImportIncumbencyPage = () => {
   const createMissingDesignations = async () => {
     setCreatingDesignations(true);
     try {
-      const response = await importService.createMissingDesignations(rawText);
+      const response = await importService.createMissingDesignations(rawText, columnMapping);
       toast.success(`${response.data.data.created.length} designations created`);
       notifyResourceChanged("designations");
       await runPreview();
@@ -99,7 +200,7 @@ const ImportIncumbencyPage = () => {
     if (!canImport) return;
     setCommitting(true);
     try {
-      const response = await importService.commitIncumbency({ rawText, createMissingDesignations: autoCreateDesignations });
+      const response = await importService.commitIncumbency({ rawText, columnMapping, createMissingDesignations: autoCreateDesignations });
       const data = response.data.data;
       setImportResult(data);
       toast.success(`${data.createdCount} employees imported`);
@@ -112,18 +213,33 @@ const ImportIncumbencyPage = () => {
     }
   };
 
+  const updateMappedField = (columnIndex, fieldKey) => {
+    setPreview(null);
+    setImportResult(null);
+    setColumnMapping((current) => {
+      const next = { ...current };
+      Object.keys(next).forEach((key) => {
+        if (Number(next[key]) === Number(columnIndex)) delete next[key];
+      });
+      if (fieldKey) next[fieldKey] = columnIndex;
+      return next;
+    });
+  };
+
+  const mappedFieldForColumn = (columnIndex) => Object.keys(columnMapping).find((key) => Number(columnMapping[key]) === Number(columnIndex)) || "";
+
   return (
     <div className="space-y-4">
       <PageHeader
         title="Import Incumbency"
-        description="Paste Google Sheets rows, preview matches, create missing designations if needed, then import safely."
+        description="Paste any Google Sheets columns, map each column once, preview matches, then import safely."
         actions={
           <>
-            <button type="button" className="btn-secondary" onClick={() => setRawText(sampleText)}>
+            <button type="button" className="btn-secondary" onClick={() => { setRawText(sampleText); setPreview(null); setImportResult(null); }}>
               <FileSpreadsheet className="h-4 w-4" />
               Load Sample
             </button>
-            <button type="button" className="btn-primary" disabled={loading} onClick={runPreview}>
+            <button type="button" className="btn-primary" disabled={loading || !requiredMappingReady} onClick={runPreview}>
               <RefreshCw className="h-4 w-4" />
               {loading ? "Checking..." : "Preview Import"}
             </button>
@@ -135,30 +251,64 @@ const ImportIncumbencyPage = () => {
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
             <h3 className="font-black">Google Sheets Data</h3>
-            <p className="text-sm text-muted-foreground">Copy from Google Sheets and paste here. Rows with only first column are treated as office/section headings.</p>
+            <p className="text-sm text-muted-foreground">Copy from Google Sheets and paste here. First row should contain column headings like Name, Designation, Office Name, CNIC, Cell, DOB, Address.</p>
           </div>
           <UploadCloud className="h-5 w-5 text-primary" />
         </div>
         <textarea
           className="min-h-64 w-full resize-y rounded-lg border border-border bg-white p-3 font-mono text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
           value={rawText}
-          onChange={(event) => setRawText(event.target.value)}
-          placeholder="Paste Name and Designation columns from Google Sheets..."
+          onChange={(event) => { setRawText(event.target.value); setPreview(null); setImportResult(null); }}
+          placeholder="Paste columns from Google Sheets..."
         />
       </section>
+
+      {pastedColumns.length ? (
+        <section className="rounded-lg border border-border bg-surface p-4 shadow-sm">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 className="font-black">Column Matching</h3>
+              <p className="text-sm text-muted-foreground">Confirm which pasted column belongs to which employee field. Name can be blank for vacant rows; Designation and Office / Section are required.</p>
+            </div>
+            <span className={requiredMappingReady ? "rounded-md bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700" : "rounded-md bg-amber-50 px-3 py-1.5 text-xs font-black text-amber-800"}>
+              {requiredMappingReady ? "Ready to preview" : "Map required columns"}
+            </span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {pastedColumns.map((column) => {
+              const selectedField = mappedFieldForColumn(column.index);
+              return (
+                <label key={`${column.index}-${column.label}`} className="rounded-lg border border-border bg-surface-2/60 p-3">
+                  <span className="block truncate text-xs font-black uppercase tracking-[0.1em] text-muted-foreground">{column.label}</span>
+                  <select className="input-shell mt-2 bg-white" value={selectedField} onChange={(event) => updateMappedField(column.index, event.target.value)}>
+                    {fieldOptions.map((field) => {
+                      const alreadyUsed = field.key && mappedFieldSet.has(field.key) && field.key !== selectedField;
+                      return (
+                        <option key={field.key || "none"} value={field.key} disabled={alreadyUsed}>
+                          {field.label}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       {preview ? (
         <>
           <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-8">
             <Metric label="Pasted Rows" value={preview.totals.sourceRows} hint="Non-empty rows" />
-            <Metric label="Employees" value={preview.totals.employeesFound} hint="Vacant/headings removed" />
+            <Metric label="Importable Rows" value={preview.totals.employeesFound} hint={`${preview.totals.vacantRows || 0} vacant`} />
             <Metric label="Ready Rows" value={preview.totals.readyRows} hint="Will be saved" />
             <Metric label="Offices" value={preview.totals.officesFound} />
             <Metric label="Missing Offices" value={preview.totals.missingOffices} />
             <Metric label="Designations" value={preview.totals.designationsFound} />
             <Metric label="Missing Designations" value={preview.totals.missingDesignations} />
             <Metric label="Duplicates" value={preview.totals.duplicates} />
-            <Metric label="Skipped" value={preview.totals.skippedRows} hint={`${preview.totals.vacantRows || 0} vacant`} />
+            <Metric label="Skipped" value={preview.totals.skippedRows} hint="Needs correction" />
           </div>
 
           {importResult ? (
@@ -181,19 +331,19 @@ const ImportIncumbencyPage = () => {
                 <div className="mt-4 grid gap-3 lg:grid-cols-3">
                   <ListPanel
                     title="Skipped Sheet Rows"
-                    items={(importResult.skippedRows || []).map((row) => `Line ${row.lineNumber}: ${row.name || "-"} (${row.reason})`)}
+                    items={(importResult.skippedRows || []).map((row) => `Line ${row.lineNumber}: ${row.name || row.designation || "-"} (${row.reason})`)}
                     emptyText="No sheet rows skipped."
                     tone={importResult.skippedRows?.length ? "warning" : "success"}
                   />
                   <ListPanel
                     title="Duplicate Employees"
-                    items={(importResult.skippedDuplicates || []).map((row) => `Line ${row.lineNumber}: ${row.fullName} - ${row.designationName} - ${row.officeName}`)}
+                    items={(importResult.skippedDuplicates || []).map((row) => `Line ${row.lineNumber}: ${row.fullName} - ${row.designationName} - ${row.officeName}${row.duplicateReason ? ` (${row.duplicateReason})` : ""}`)}
                     emptyText="No duplicate employees skipped."
                     tone={importResult.skippedDuplicates?.length ? "warning" : "success"}
                   />
                   <ListPanel
                     title="Unmatched Rows"
-                    items={(importResult.skippedUnmatched || []).map((row) => `Line ${row.lineNumber}: ${row.fullName} (${row.reason})`)}
+                    items={(importResult.skippedUnmatched || []).map((row) => `Line ${row.lineNumber}: ${row.fullName || row.designationName} (${row.reason})`)}
                     emptyText="No unmatched rows skipped."
                     tone={importResult.skippedUnmatched?.length ? "warning" : "success"}
                   />
@@ -241,13 +391,13 @@ const ImportIncumbencyPage = () => {
             <div className="grid gap-4 lg:grid-cols-2">
               <ListPanel
                 title="Rows That Will Not Save"
-                items={(preview.skippedRows || []).map((row) => `Line ${row.lineNumber}: ${row.name || "-"} (${row.reason})`)}
+                items={(preview.skippedRows || []).map((row) => `Line ${row.lineNumber}: ${row.name || row.designation || "-"} (${row.reason})`)}
                 emptyText="No sheet rows will be skipped."
                 tone={preview.skippedRows?.length ? "warning" : "success"}
               />
               <ListPanel
                 title="Duplicate Rows"
-                items={(preview.duplicateRows || []).map((row) => `Line ${row.lineNumber}: ${row.fullName} - ${row.designationName} - ${row.officeName}`)}
+                items={(preview.duplicateRows || []).map((row) => `Line ${row.lineNumber}: ${row.fullName} - ${row.designationName} - ${row.officeName}${row.duplicateReason ? ` (${row.duplicateReason})` : ""}`)}
                 emptyText="No duplicates found."
                 tone={preview.duplicateRows?.length ? "warning" : "success"}
               />
@@ -258,7 +408,7 @@ const ImportIncumbencyPage = () => {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="font-black">Final Import</h3>
-                <p className="text-sm text-muted-foreground">Duplicates and vacant rows are skipped. Missing offices must be resolved manually to protect hierarchy accuracy.</p>
+                <p className="text-sm text-muted-foreground">Vacant or blank-name rows will be saved as vacant. Duplicates are skipped. Missing offices must be resolved manually to protect hierarchy accuracy.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
@@ -292,6 +442,8 @@ const ImportIncumbencyPage = () => {
                     <th>Name</th>
                     <th>Designation</th>
                     <th>Office / Section</th>
+                    <th>CNIC</th>
+                    <th>Cell</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -302,9 +454,11 @@ const ImportIncumbencyPage = () => {
                       <td className="font-semibold">{row.fullName}</td>
                       <td>{row.designationName}</td>
                       <td>{row.officeDisplayName || row.officeName}</td>
+                      <td>{row.cnic || "-"}</td>
+                      <td>{row.mobileNumber || "-"}</td>
                       <td>
                         {row.duplicate ? (
-                          <span className="font-bold text-amber-700">Duplicate skipped</span>
+                          <span className="font-bold text-amber-700">{row.duplicateReason || "Duplicate skipped"}</span>
                         ) : row.officeMatched && row.designationMatched ? (
                           <span className="font-bold text-emerald-700">Ready</span>
                         ) : (

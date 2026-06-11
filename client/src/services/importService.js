@@ -1,7 +1,7 @@
 import api from "./api";
 
 export const importService = {
-  previewIncumbency: (rawText) => api.post("/import/incumbency/preview", { rawText }),
-  createMissingDesignations: (rawText) => api.post("/import/incumbency/create-missing-designations", { rawText }),
+  previewIncumbency: (rawText, columnMapping) => api.post("/import/incumbency/preview", { rawText, columnMapping }),
+  createMissingDesignations: (rawText, columnMapping) => api.post("/import/incumbency/create-missing-designations", { rawText, columnMapping }),
   commitIncumbency: (payload) => api.post("/import/incumbency/commit", payload),
 };

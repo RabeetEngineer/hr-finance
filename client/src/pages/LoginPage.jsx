@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { ArrowRight, BarChart3, Eye, EyeOff, Headphones, KeyRound, Lock, MailCheck, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowRight, BadgeDollarSign, BarChart3, Building2, Eye, EyeOff, Headphones, KeyRound, Landmark, LineChart, Lock, ShieldCheck, UserRound } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { getErrorMessage } from "@/utils/getErrorMessage";
-import { confirmActivationCode, forgotPasswordRequest, requestActivationCode, resetPasswordRequest } from "@/services/authService";
+import { forgotPasswordRequest, resetPasswordRequest } from "@/services/authService";
 import { toast } from "sonner";
 
 const LoginPage = () => {
@@ -55,10 +55,7 @@ const LoginPage = () => {
     }
     setAccountLoading(true);
     try {
-      const response =
-        purpose === "activation"
-          ? await requestActivationCode({ email: accountForm.email })
-          : await forgotPasswordRequest({ email: accountForm.email });
+      const response = await forgotPasswordRequest({ email: accountForm.email });
       toast.success(response.data.message || "Code sent");
       showDevCode(response);
       setCodeCooldown(45);
@@ -72,19 +69,13 @@ const LoginPage = () => {
   const submitAccountAction = async () => {
     setAccountLoading(true);
     try {
-      if (accountMode === "activate") {
-        const response = await confirmActivationCode({ email: accountForm.email, code: accountForm.code });
-        toast.success(response.data.message || "Account activated");
-        setAccountMode("");
-      } else {
-        const response = await resetPasswordRequest({
-          email: accountForm.email,
-          code: accountForm.code,
-          password: accountForm.password,
-        });
-        toast.success(response.data.message || "Password reset successful");
-        setAccountMode("");
-      }
+      const response = await resetPasswordRequest({
+        email: accountForm.email,
+        code: accountForm.code,
+        password: accountForm.password,
+      });
+      toast.success(response.data.message || "Password reset successful");
+      setAccountMode("");
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not complete request"));
     } finally {
@@ -93,16 +84,14 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="flex min-h-screen overflow-hidden bg-[#f3f7fb] p-3 text-foreground md:h-screen md:p-5">
-      <div className="mx-auto grid h-full max-h-[calc(100vh-2.5rem)] w-full max-w-6xl overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.10)] lg:grid-cols-[1fr_0.9fr]">
-        <section className="relative hidden overflow-hidden bg-[linear-gradient(145deg,#eef8ff_0%,#ffffff_48%,#f7fbff_100%)] p-5 lg:flex lg:flex-col lg:justify-between">
-          <div className="pointer-events-none absolute -bottom-24 -left-20 h-72 w-72 rounded-full border border-blue-100/80" />
-          <div className="pointer-events-none absolute -right-24 -top-20 h-80 w-80 rounded-full border border-blue-100/80" />
-
+    <div className="min-h-screen bg-[linear-gradient(135deg,#edf4f7_0%,#ffffff_44%,#eaf5ee_100%)] p-3 text-foreground md:p-5 lg:h-screen lg:overflow-hidden">
+      <div className="mx-auto grid min-h-[calc(100vh-1.5rem)] w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.12)] lg:h-full lg:min-h-0 lg:max-h-[calc(100vh-2.5rem)] lg:grid-cols-[1.05fr_0.95fr]">
+        <section className="relative hidden overflow-hidden bg-[linear-gradient(145deg,#f8fbfc_0%,#eef7f1_54%,#f9f3e4_100%)] p-5 text-foreground lg:flex lg:flex-col lg:justify-between">
+          <div className="pointer-events-none absolute inset-0 opacity-50 [background-image:linear-gradient(rgba(15,23,42,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.05)_1px,transparent_1px)] [background-size:42px_42px]" />
           <div className="relative z-10">
             <div className="flex items-center gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-200 bg-white text-emerald-800 shadow-sm">
-                <ShieldCheck className="h-7 w-7" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-800 shadow-sm">
+                <Landmark className="h-7 w-7" />
               </div>
               <div>
                 <h1 className="text-lg font-black text-foreground">Finance Department</h1>
@@ -110,30 +99,43 @@ const LoginPage = () => {
               </div>
             </div>
 
-            <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
-              <div className="relative h-36 bg-[linear-gradient(180deg,#dff2ff_0%,#f8fcff_62%,#e8f1f8_100%)]">
-                <div className="absolute left-10 top-8 h-24 w-1 rounded bg-slate-400" />
-                <div className="absolute left-11 top-9 h-10 w-16 overflow-hidden rounded-r-[1.5rem] bg-[#126b45] shadow-md">
-                  <div className="absolute left-5 top-3 h-5 w-5 rounded-full border-2 border-white" />
-                  <div className="absolute left-8 top-4 h-2 w-2 rotate-45 bg-white" />
-                </div>
-                <div className="absolute bottom-0 left-8 right-8 h-20 rounded-t-lg border border-slate-200 bg-white/94 shadow-sm">
-                  <div className="absolute -top-5 left-0 right-0 mx-auto h-8 w-48 rounded-t-full border border-slate-200 bg-white" />
-                  <div className="grid h-full grid-cols-7 gap-2 px-8 pt-7">
-                    {Array.from({ length: 7 }).map((_, index) => (
-                      <div key={index} className="rounded-t-md bg-slate-200" />
-                    ))}
+            <div className="mt-5 grid max-w-xl gap-3">
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">HR Finance System</p>
+                    <p className="mt-2 text-2xl font-black tracking-normal text-foreground">Incumbency & Staff Position</p>
+                  </div>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
+                    <BadgeDollarSign className="h-6 w-6" />
                   </div>
                 </div>
-                <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white to-transparent" />
+                <div className="mt-4 grid grid-cols-12 items-end gap-1.5 border-t border-slate-100 pt-4">
+                  {[28, 38, 30, 54, 46, 62, 44, 68, 52, 72, 58, 76].map((height, index) => (
+                    <span key={index} className="rounded-t bg-emerald-500/45" style={{ height: `${height}px` }} />
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-slate-200 bg-white/80 p-3 shadow-sm">
+                  <LineChart className="h-5 w-5 text-emerald-700" />
+                  <p className="mt-2 text-sm font-black text-foreground">Dashboard</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">Staff and vacancy summaries.</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white/80 p-3 shadow-sm">
+                  <Building2 className="h-5 w-5 text-amber-700" />
+                  <p className="mt-2 text-sm font-black text-foreground">Office Structure</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">Offices, sections, transfers.</p>
+                </div>
               </div>
             </div>
 
-            <div className="mt-4 max-w-lg">
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-accent">Digital HR</p>
-              <h2 className="mt-1 text-[1.7rem] font-black leading-tight text-foreground">Management System</h2>
+            <div className="mt-5 max-w-lg">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">Punjab Finance HR</p>
+              <h2 className="mt-2 text-[1.85rem] font-black leading-tight text-foreground">Incumbency Management System</h2>
               <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                A centralized solution for managing incumbency, transfers, retirements, public viewing, and departmental reporting.
+                Manage employee incumbency, offices and sections, transfers, retirements, imports, public lists, and official reporting in one secure system.
               </p>
             </div>
 
@@ -146,11 +148,11 @@ const LoginPage = () => {
                 const Icon = item.icon;
                 return (
                   <div key={item.title} className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-white shadow-sm">
-                      <Icon className="h-5 w-5 text-primary" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
+                      <Icon className="h-4 w-4 text-primary" />
                     </div>
                     <div>
-                      <p className="text-sm font-black">{item.title}</p>
+                      <p className="text-sm font-black text-foreground">{item.title}</p>
                       <p className="text-xs text-muted-foreground">{item.detail}</p>
                     </div>
                   </div>
@@ -159,7 +161,7 @@ const LoginPage = () => {
             </div>
           </div>
 
-          <div className="relative z-10 inline-flex max-w-sm items-center gap-3 rounded-xl border border-slate-200 bg-white/88 px-3 py-2 shadow-sm">
+          <div className="relative z-10 inline-flex max-w-sm items-center gap-3 rounded-xl border border-slate-200 bg-white/85 px-3 py-2 shadow-sm">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-white">
               <Headphones className="h-4 w-4" />
             </div>
@@ -170,8 +172,14 @@ const LoginPage = () => {
         </section>
 
         <section className="flex min-h-0 items-center justify-center bg-white p-4 md:p-6">
-          <div className="w-full max-w-[25rem] rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/8 text-primary ring-8 ring-primary/5">
+          <div className="w-full max-w-[25rem]">
+            <div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 lg:hidden">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Punjab Finance HR</p>
+              <h1 className="mt-1 text-lg font-black text-foreground">Incumbency Management System</h1>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Employee incumbency, offices, transfers, imports, public lists, and reports.</p>
+            </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_18px_55px_rgba(15,23,42,0.08)] md:p-6">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-primary/8 text-primary ring-8 ring-primary/5">
               <Lock className="h-7 w-7" />
             </div>
             <div className="mt-4 text-center">
@@ -219,19 +227,7 @@ const LoginPage = () => {
               </button>
             </form>
 
-            <div className="mt-3 flex items-center justify-between gap-2 text-xs font-bold">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 text-primary hover:underline"
-                onClick={() => {
-                  setAccountMode(accountMode === "activate" ? "" : "activate");
-                  setAccountForm((current) => ({ ...current, email: current.email || form.email }));
-                  setCodeCooldown(0);
-                }}
-              >
-                <MailCheck className="h-4 w-4" />
-                Activate account
-              </button>
+            <div className="mt-3 flex items-center justify-end gap-2 text-xs font-bold">
               <button
                 type="button"
                 className="inline-flex items-center gap-1.5 text-primary hover:underline"
@@ -268,7 +264,7 @@ const LoginPage = () => {
                       type="button"
                       className="btn-secondary h-10 rounded-lg px-3 py-2 text-xs"
                       disabled={accountLoading || codeCooldown > 0}
-                      onClick={() => requestCode(accountMode === "activate" ? "activation" : "reset")}
+                      onClick={requestCode}
                     >
                       {codeCooldown ? `Resend ${codeCooldown}s` : "Send code"}
                     </button>
@@ -283,7 +279,7 @@ const LoginPage = () => {
                     />
                   ) : null}
                   <button type="button" className="btn-primary h-10 rounded-lg py-2 text-xs" disabled={accountLoading} onClick={submitAccountAction}>
-                    {accountLoading ? "Please wait..." : accountMode === "activate" ? "Activate" : "Reset Password"}
+                    {accountLoading ? "Please wait..." : "Reset Password"}
                   </button>
                 </div>
               </div>
@@ -295,6 +291,7 @@ const LoginPage = () => {
               </Link>
               <p className="mt-3 text-xs text-muted-foreground">Your data is protected and role restricted.</p>
             </div>
+          </div>
           </div>
         </section>
       </div>

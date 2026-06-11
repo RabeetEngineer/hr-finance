@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Building2, Check, ChevronDown, Download, ListChecks, Printer, Search, UserRoundCheck, Users, X } from "lucide-react";
-import ActivityTimeline from "@/components/common/ActivityTimeline";
 import { reportService } from "@/services/reportService";
-import { activityLogService } from "@/services/activityLogService";
 import { formatDate } from "@/utils/formatDate";
 import { getErrorMessage } from "@/utils/getErrorMessage";
 import { subscribeResourceChanged } from "@/utils/resourceEvents";
@@ -36,11 +34,8 @@ const DashboardPage = () => {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showComposition, setShowComposition] = useState(true);
-  const [showTimeline, setShowTimeline] = useState(true);
   const [compositionSearch, setCompositionSearch] = useState("");
   const [selectedCompositionIds, setSelectedCompositionIds] = useState([]);
-  const [activityLogs, setActivityLogs] = useState([]);
-  const [activityLoading, setActivityLoading] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -54,24 +49,10 @@ const DashboardPage = () => {
     }
   };
 
-  const loadActivity = async () => {
-    setActivityLoading(true);
-    try {
-      const response = await activityLogService.recent({ limit: 30 });
-      setActivityLogs(response.data.data || []);
-    } catch {
-      setActivityLogs([]);
-    } finally {
-      setActivityLoading(false);
-    }
-  };
-
   useEffect(() => {
     load();
-    loadActivity();
     const unsubscribe = subscribeResourceChanged(({ resource }) => {
       if (["employees", "organization-units", "designations"].includes(resource)) load();
-      if (["employees", "organization-units", "designations", "users"].includes(resource)) loadActivity();
     });
     return unsubscribe;
   }, []);
@@ -180,8 +161,7 @@ const DashboardPage = () => {
         })}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="space-y-4">
+      <div className="space-y-4">
       <section className="rounded-lg border border-border bg-surface p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -317,22 +297,6 @@ const DashboardPage = () => {
           </table>
         </div>
       </section>
-        </div>
-
-        <div className="hidden xl:block">
-          <ActivityTimeline logs={activityLogs} loading={activityLoading} />
-        </div>
-
-        <section className="rounded-lg border border-border bg-surface p-4 shadow-sm xl:hidden">
-          <button type="button" className="flex w-full items-center justify-between gap-3 text-left" onClick={() => setShowTimeline((value) => !value)}>
-            <span>
-              <span className="block text-base font-black">Activity Timeline</span>
-              <span className="block text-xs text-muted-foreground">Recent changes across the system</span>
-            </span>
-            <ChevronDown className={showTimeline ? "h-4 w-4 rotate-180 transition" : "h-4 w-4 transition"} />
-          </button>
-          {showTimeline ? <div className="mt-3"><ActivityTimeline logs={activityLogs} loading={activityLoading} compact /></div> : null}
-        </section>
       </div>
     </div>
   );

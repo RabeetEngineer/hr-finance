@@ -43,23 +43,148 @@ const isHeaderRow = (name, designation) => {
 
 const isSkippedLabel = (name, designation) => {
   const label = clean(name).toUpperCase();
-  return (!clean(designation) && ["NAME", "SR.#", "SR", "INCUMBENCY POSITION"].includes(label)) || !label;
+  return (!clean(designation) && ["NAME", "SR.#", "SR", "INCUMBENCY POSITION"].includes(label)) || (!label && !clean(designation));
 };
 
 const isVacantRow = (name) => /^VACANT\.?/i.test(clean(name));
 
+const importFields = [
+  { key: "fullName", aliases: ["name", "employee name", "full name", "officer name", "official name"] },
+  { key: "designationName", aliases: ["designation", "desgination", "post", "job title", "title"] },
+  { key: "officeName", aliases: ["office", "office name", "section", "section name", "office section", "department", "branch"] },
+  { key: "fatherName", aliases: ["father", "father name", "father's name"] },
+  { key: "cnic", aliases: ["cnic", "nic", "id card"] },
+  { key: "mobileNumber", aliases: ["cell", "cell no", "cell number", "mobile", "mobile number", "phone", "contact"] },
+  { key: "dateOfBirth", aliases: ["dob", "date of birth", "birth date"] },
+  { key: "address", aliases: ["address", "home address", "residential address"] },
+  { key: "personnelNumber", aliases: ["personnel", "personnel no", "personnel number", "personal no", "employee no"] },
+  { key: "serviceCadre", aliases: ["cadre", "service cadre", "service"] },
+  { key: "gender", aliases: ["gender", "sex"] },
+  { key: "email", aliases: ["email", "email address"] },
+  { key: "district", aliases: ["district"] },
+  { key: "domicile", aliases: ["domicile"] },
+  { key: "qualification", aliases: ["qualification", "education"] },
+  { key: "joiningDate", aliases: ["joining", "joining date", "date of joining", "doj"] },
+  { key: "remarks", aliases: ["remarks", "remark", "notes", "note"] },
+  { key: "employmentStatus", aliases: ["status", "employment status", "incumbency action"] },
+];
+
 const splitRow = (line) => {
-  const cells = String(line).split("\t");
-  if (cells.length === 1) return String(line).split(",");
+  const text = String(line || "");
+  if (text.includes("\t")) return text.split("\t");
+
+  const cells = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current);
   return cells;
 };
 
-const parseIncumbencyText = (rawText = "") => {
+const headerKey = (value) =>
+  clean(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const inferField = (header) => {
+  const normalized = headerKey(header);
+  if (!normalized) return "";
+  const exact = importFields.find((field) => field.aliases.includes(normalized));
+  if (exact) return exact.key;
+  const fuzzy = importFields.find((field) => field.aliases.some((alias) => normalized.includes(alias) || alias.includes(normalized)));
+  return fuzzy?.key || "";
+};
+
+const normalizeMapping = (columnMapping = {}, headers = []) => {
+  const used = new Set();
+  const mapping = {};
+  importFields.forEach((field) => {
+    const rawIndex = columnMapping[field.key];
+    const index = rawIndex === "" || rawIndex === undefined || rawIndex === null ? -1 : Number(rawIndex);
+    if (Number.isInteger(index) && index >= 0 && index < headers.length && !used.has(index)) {
+      mapping[field.key] = index;
+      used.add(index);
+    }
+  });
+
+  headers.forEach((header, index) => {
+    if (used.has(index)) return;
+    const key = inferField(header);
+    if (key && mapping[key] === undefined) {
+      mapping[key] = index;
+      used.add(index);
+    }
+  });
+
+  return mapping;
+};
+
+const mappedValue = (cells, mapping, key) => {
+  const index = mapping[key];
+  return Number.isInteger(index) ? clean(cells[index]) : "";
+};
+
+const parseDate = (value) => {
+  const text = clean(value);
+  if (!text) return undefined;
+  const normalized = text.replace(/\./g, "/").replace(/-/g, "/");
+  const parts = normalized.split("/").map((part) => clean(part));
+  if (parts.length === 3) {
+    const [a, b, c] = parts.map(Number);
+    const year = c < 100 ? 2000 + c : c;
+    if (a > 0 && b > 0 && year > 1900) {
+      const date = a > 12 ? new Date(year, b - 1, a) : new Date(year, a - 1, b);
+      if (!Number.isNaN(date.getTime())) return date;
+    }
+  }
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
+const normalizeStatus = (name, status) => {
+  const value = headerKey(status);
+  if (!clean(name) || isVacantRow(name) || value.includes("vacant")) return "vacant";
+  if (value.includes("retired")) return "retired";
+  if (value.includes("transfer")) return "transferred";
+  if (value.includes("deceased") || value.includes("death")) return "deceased";
+  if (value.includes("leave")) return "on_leave";
+  if (value.includes("suspend")) return "suspended";
+  if (value.includes("resign")) return "resigned";
+  return "active";
+};
+
+const normalizeGender = (name, gender) => {
+  const value = headerKey(gender);
+  if (["male", "m"].includes(value)) return "male";
+  if (["female", "f"].includes(value)) return "female";
+  return inferGender(name);
+};
+
+const parseIncumbencyText = (rawText = "", columnMapping = {}) => {
   const rows = String(rawText || "")
     .replace(/\r/g, "")
     .split("\n")
-    .map((line, index) => ({ cells: splitRow(line), lineNumber: index + 1 }));
+    .map((line, index) => ({ cells: splitRow(line), lineNumber: index + 1, raw: line }));
   const sourceRows = rows.filter(({ cells }) => cells.some((cell) => clean(cell))).length;
+  const headerRow = rows.find(({ cells }) => cells.some((cell) => clean(cell)));
+  const headers = (headerRow?.cells || []).map((cell, index) => clean(cell) || `Column ${index + 1}`);
+  const mapping = normalizeMapping(columnMapping, headers);
+  const headerLine = headerRow?.lineNumber || 0;
 
   let currentOfficeName = "";
   const offices = new Map();
@@ -68,49 +193,69 @@ const parseIncumbencyText = (rawText = "") => {
   const skippedRows = [];
 
   rows.forEach(({ cells, lineNumber }) => {
-    const name = clean(cells[0]);
-    const designation = clean(cells[1]);
+    if (lineNumber === headerLine) return;
+    const name = mappedValue(cells, mapping, "fullName");
+    const designation = mappedValue(cells, mapping, "designationName");
+    const mappedOffice = mappedValue(cells, mapping, "officeName");
+    const nonEmptyMappedValues = Object.keys(mapping).map((key) => mappedValue(cells, mapping, key)).filter(Boolean);
+
+    if (!cells.some((cell) => clean(cell))) return;
 
     if (isSkippedLabel(name, designation)) {
       if (name && name.toUpperCase() !== "NAME") skippedRows.push({ lineNumber, name, reason: "Ignored sheet heading" });
       return;
     }
 
-    if (isHeaderRow(name, designation)) {
-      currentOfficeName = name;
-      offices.set(normalize(name), name);
+    if (!mappedOffice && isHeaderRow(clean(cells[0]), designation) && nonEmptyMappedValues.length <= 1) {
+      currentOfficeName = clean(cells[0]);
+      offices.set(normalize(currentOfficeName), currentOfficeName);
       return;
     }
 
-    if (!name && !designation) return;
+    const officeName = mappedOffice || currentOfficeName;
+    if (officeName) offices.set(normalize(officeName), officeName);
 
-    if (!currentOfficeName) {
+    if (!officeName) {
       skippedRows.push({ lineNumber, name, designation, reason: "No office/section heading above this row" });
       return;
     }
 
-    if (!name || !designation) {
-      skippedRows.push({ lineNumber, name, designation, reason: "Employee row needs both name and designation" });
+    if (!designation) {
+      skippedRows.push({ lineNumber, name, designation, officeName, reason: "Designation is required" });
       return;
     }
 
-    if (isVacantRow(name)) {
-      skippedRows.push({ lineNumber, name, designation, officeName: currentOfficeName, reason: "Vacant row skipped" });
-      return;
-    }
-
+    const employmentStatus = normalizeStatus(name, mappedValue(cells, mapping, "employmentStatus"));
+    const fullName = employmentStatus === "vacant" ? clean(name).replace(/\.$/, "") || "Vacant" : name;
     designations.set(normalize(designation), designation);
     employees.push({
       lineNumber,
-      fullName: name,
+      fullName,
       designationName: designation,
-      officeName: currentOfficeName,
-      gender: inferGender(name),
+      officeName,
+      fatherName: mappedValue(cells, mapping, "fatherName"),
+      cnic: mappedValue(cells, mapping, "cnic"),
+      mobileNumber: mappedValue(cells, mapping, "mobileNumber"),
+      dateOfBirth: parseDate(mappedValue(cells, mapping, "dateOfBirth")),
+      address: mappedValue(cells, mapping, "address"),
+      personnelNumber: mappedValue(cells, mapping, "personnelNumber"),
+      serviceCadre: mappedValue(cells, mapping, "serviceCadre"),
+      gender: normalizeGender(name, mappedValue(cells, mapping, "gender")),
+      email: mappedValue(cells, mapping, "email"),
+      district: mappedValue(cells, mapping, "district"),
+      domicile: mappedValue(cells, mapping, "domicile"),
+      qualification: mappedValue(cells, mapping, "qualification"),
+      joiningDate: parseDate(mappedValue(cells, mapping, "joiningDate")),
+      remarks: mappedValue(cells, mapping, "remarks"),
+      employmentStatus,
     });
   });
 
   return {
     sourceRows,
+    headers,
+    mapping,
+    columns: headers.map((label, index) => ({ index, label, inferredField: Object.keys(mapping).find((key) => mapping[key] === index) || "" })),
     offices: [...offices.values()],
     designations: [...designations.values()],
     employees,
@@ -129,10 +274,10 @@ const makeLookup = (items, fields) => {
   return map;
 };
 
-const analyzeImport = async (rawText) => {
-  const parsed = parseIncumbencyText(rawText);
+const analyzeImport = async (rawText, columnMapping = {}) => {
+  const parsed = parseIncumbencyText(rawText, columnMapping);
   if (!parsed.employees.length && !parsed.offices.length) {
-    throw new AppError("No importable rows found. Paste Google Sheets data with Name and Designation columns.", 400);
+    throw new AppError("No importable rows found. Paste Google Sheets data with headers, then map columns.", 400);
   }
 
   const [units, designations, existingEmployees] = await Promise.all([
@@ -141,7 +286,7 @@ const analyzeImport = async (rawText) => {
     Employee.find({ isArchived: { $ne: true } })
       .populate("designation", "name")
       .populate("currentOfficeSection", "name code")
-      .select("fullName designation currentOfficeSection employmentStatus")
+      .select("fullName designation currentOfficeSection employmentStatus cnic personnelNumber")
       .lean(),
   ]);
 
@@ -171,13 +316,24 @@ const analyzeImport = async (rawText) => {
       [normalize(employee.fullName), normalize(employee.designation?.name), String(employee.currentOfficeSection?._id || "")].join("|")
     )
   );
+  const existingCnics = new Set(existingEmployees.map((employee) => clean(employee.cnic)).filter(Boolean));
+  const existingPersonnelNumbers = new Set(existingEmployees.map((employee) => clean(employee.personnelNumber)).filter(Boolean));
   const importKeys = new Set();
+  const importCnics = new Set();
+  const importPersonnelNumbers = new Set();
   const previewRows = parsed.employees.map((employee) => {
     const unit = unitLookup.get(normalize(employee.officeName));
     const designation = designationLookup.get(normalize(employee.designationName));
     const key = [normalize(employee.fullName), normalize(employee.designationName), String(unit?._id || "")].join("|");
-    const duplicateInImport = importKeys.has(key);
-    importKeys.add(key);
+    const cnic = clean(employee.cnic).replace(/\D/g, "");
+    const personnelNumber = clean(employee.personnelNumber);
+    const duplicateInImport = employee.employmentStatus !== "vacant" && importKeys.has(key);
+    const duplicateExisting = employee.employmentStatus !== "vacant" && existingKeys.has(key);
+    const duplicateCnic = cnic && (existingCnics.has(cnic) || importCnics.has(cnic));
+    const duplicatePersonnelNumber = personnelNumber && (existingPersonnelNumbers.has(personnelNumber) || importPersonnelNumbers.has(personnelNumber));
+    if (employee.employmentStatus !== "vacant") importKeys.add(key);
+    if (cnic) importCnics.add(cnic);
+    if (personnelNumber) importPersonnelNumbers.add(personnelNumber);
     return {
       ...employee,
       officeMatched: Boolean(unit),
@@ -185,7 +341,8 @@ const analyzeImport = async (rawText) => {
       officeDisplayName: unit?.code || unit?.name || "",
       designationMatched: Boolean(designation),
       designationId: designation?._id || null,
-      duplicate: duplicateInImport || existingKeys.has(key),
+      duplicate: duplicateInImport || duplicateExisting || duplicateCnic || duplicatePersonnelNumber,
+      duplicateReason: duplicateCnic ? "CNIC already exists" : duplicatePersonnelNumber ? "Personnel number already exists" : duplicateInImport ? "Duplicate in pasted data" : duplicateExisting ? "Employee already exists" : "",
     };
   });
 
@@ -202,8 +359,10 @@ const analyzeImport = async (rawText) => {
 };
 
 export const previewIncumbencyImport = asyncHandler(async (req, res) => {
-  const analysis = await analyzeImport(req.body.rawText);
+  const analysis = await analyzeImport(req.body.rawText, req.body.columnMapping);
   return apiResponse(res, 200, "Import preview generated", {
+    columns: analysis.parsed.columns,
+    columnMapping: analysis.parsed.mapping,
     totals: {
       sourceRows: analysis.parsed.sourceRows,
       officesFound: analysis.officeMatches.length,
@@ -213,7 +372,7 @@ export const previewIncumbencyImport = asyncHandler(async (req, res) => {
       missingDesignations: analysis.missingDesignations.length,
       duplicates: analysis.duplicateRows.length,
       skippedRows: analysis.skippedRows.length,
-      vacantRows: analysis.skippedRows.filter((row) => row.reason === "Vacant row skipped").length,
+      vacantRows: analysis.previewRows.filter((row) => row.employmentStatus === "vacant").length,
       blockedRows: analysis.previewRows.filter((row) => !row.officeMatched || !row.designationMatched).length,
       readyRows: analysis.previewRows.filter((row) => row.officeMatched && row.designationMatched && !row.duplicate).length,
     },
@@ -228,7 +387,7 @@ export const previewIncumbencyImport = asyncHandler(async (req, res) => {
 });
 
 export const createMissingImportDesignations = asyncHandler(async (req, res) => {
-  const analysis = await analyzeImport(req.body.rawText);
+  const analysis = await analyzeImport(req.body.rawText, req.body.columnMapping);
   const created = [];
 
   for (const name of analysis.missingDesignations) {
@@ -254,7 +413,7 @@ export const createMissingImportDesignations = asyncHandler(async (req, res) => 
 
 export const commitIncumbencyImport = asyncHandler(async (req, res) => {
   const createMissingDesignations = req.body.createMissingDesignations === true;
-  let analysis = await analyzeImport(req.body.rawText);
+  let analysis = await analyzeImport(req.body.rawText, req.body.columnMapping);
 
   if (analysis.missingOffices.length) {
     throw new AppError("Resolve missing offices/sections before importing employees.", 400);
@@ -268,7 +427,7 @@ export const commitIncumbencyImport = asyncHandler(async (req, res) => {
     for (const name of analysis.missingDesignations) {
       await Designation.create({ name, totalStrength: 0, category: "official", createdBy: req.user?._id });
     }
-    analysis = await analyzeImport(req.body.rawText);
+    analysis = await analyzeImport(req.body.rawText, req.body.columnMapping);
   }
 
   const session = await mongoose.startSession();
@@ -310,8 +469,21 @@ export const commitIncumbencyImport = asyncHandler(async (req, res) => {
               designation: row.designationId,
               currentOfficeSection: row.officeId,
               currentSeat: null,
+              fatherName: row.fatherName,
+              cnic: row.cnic,
+              mobileNumber: row.mobileNumber,
+              dateOfBirth: row.dateOfBirth,
+              address: row.address,
+              personnelNumber: row.personnelNumber,
+              serviceCadre: row.serviceCadre,
+              email: row.email,
+              district: row.district,
+              domicile: row.domicile,
+              qualification: row.qualification,
+              dateOfJoiningCurrentDepartment: row.joiningDate,
+              remarks: row.remarks,
               gender: row.gender,
-              employmentStatus: "active",
+              employmentStatus: row.employmentStatus,
               sortOrder: nextSort,
               createdBy: req.user?._id,
               updatedBy: req.user?._id,

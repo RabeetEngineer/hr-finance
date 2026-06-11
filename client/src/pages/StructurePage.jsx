@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Building2, ChevronDown, ChevronUp, GitBranch, Layers, MoveVertical, Pencil, Plus, Save, X } from "lucide-react";
+import { Building2, ChevronDown, ChevronUp, GitBranch, Layers, MoveVertical, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 import Modal from "@/components/common/Modal";
 import { organizationUnitService } from "@/services/organizationUnitService";
 import { getErrorMessage } from "@/utils/getErrorMessage";
@@ -121,6 +122,7 @@ const StructurePage = () => {
   const [saving, setSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(blankForm);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const loadUnits = async () => {
     setLoading(true);
@@ -210,6 +212,23 @@ const StructurePage = () => {
     }
   };
 
+  const deleteUnit = async () => {
+    if (!deleteTarget) return;
+
+    setSaving(true);
+    try {
+      await organizationUnitService.remove(getId(deleteTarget));
+      toast.success("Office / section deleted");
+      setDeleteTarget(null);
+      notifyResourceChanged("organization-units");
+      await reloadUnitsInPlace();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not delete office / section"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const moveUnit = async (unit, direction) => {
     const parentId = getId(unit.parent || unit.parentOfficeSection);
     const siblings = units
@@ -288,6 +307,10 @@ const StructurePage = () => {
                 <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-bold shadow-sm transition hover:-translate-y-0.5 hover:bg-white" onClick={() => openEdit(unit)}>
                   <Pencil className="h-4 w-4" />
                   Edit
+                </button>
+                <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-danger shadow-sm transition hover:-translate-y-0.5 hover:bg-red-50" onClick={() => setDeleteTarget(unit)}>
+                  <Trash2 className="h-4 w-4" />
+                  Delete
                 </button>
               </div>
             </div>
@@ -395,6 +418,16 @@ const StructurePage = () => {
           </button>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete office / section"
+        description={`Delete ${deleteTarget ? compactUnitName(deleteTarget) : "this office / section"}? Child sections or linked employees must be cleared first.`}
+        confirmLabel="Delete"
+        loading={saving}
+        onConfirm={deleteUnit}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 };

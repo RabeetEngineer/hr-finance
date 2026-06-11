@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Crown, FileDown, Pencil, Plus, Printer, RefreshCw, Save, Search, Star, Trash2, X } from "lucide-react";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import Modal from "@/components/common/Modal";
-import QuickStats from "@/components/common/QuickStats";
 import { employeeService } from "@/services/employeeService";
 import { designationService } from "@/services/designationService";
 import { organizationUnitService } from "@/services/organizationUnitService";
@@ -1187,7 +1186,6 @@ const EmployeesPage = ({ publicMode = false }) => {
                                 </span>
                               ) : null}
                             </div>
-                            <QuickStats rows={row.section.rows} />
                           </td>
                         </tr>
                       );
@@ -1278,7 +1276,6 @@ const EmployeesPage = ({ publicMode = false }) => {
                   return (
                     <div key={`mobile-section-${row.section.id}-${index}`} className="rounded-xl border border-border bg-surface-2 px-3 py-3">
                       <p className="text-base font-black">{row.section.name}</p>
-                      <QuickStats rows={row.section.rows} />
                     </div>
                   );
                 }
